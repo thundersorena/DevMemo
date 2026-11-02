@@ -52,9 +52,25 @@ export const commitsQuerySchema = z.object({
   repository: z.string().trim().min(1).max(200).optional(),
 });
 
+export const searchTypeSchema = z.enum(["note", "commit", "summary"]);
+
 export const searchQuerySchema = z.object({
   q: z.string().trim().min(2, "Query must be at least 2 characters").max(200),
   limit: z.coerce.number().int().min(1).max(100).default(30),
+  type: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(",").filter(Boolean) : undefined))
+    .pipe(z.array(searchTypeSchema).optional()),
+  from: z
+    .string()
+    .optional()
+    .refine((v) => !v || isValidDateKey(v), "from must be YYYY-MM-DD"),
+  to: z
+    .string()
+    .optional()
+    .refine((v) => !v || isValidDateKey(v), "to must be YYYY-MM-DD"),
+  repository: z.string().trim().min(1).max(200).optional(),
 });
 
 export const timeZoneSchema = z
@@ -66,3 +82,19 @@ export const updateSettingsSchema = z.object({
 });
 
 export type UpdateDayInput = z.infer<typeof updateDaySchema>;
+
+export const authorEmailsSchema = z
+  .array(z.email({ message: "Enter valid email addresses" }))
+  .max(10, "Up to 10 emails");
+
+export const exportQuerySchema = z.object({
+  format: z.enum(["md", "json", "csv"]).default("md"),
+  from: z
+    .string()
+    .optional()
+    .refine((v) => !v || isValidDateKey(v), "from must be YYYY-MM-DD"),
+  to: z
+    .string()
+    .optional()
+    .refine((v) => !v || isValidDateKey(v), "to must be YYYY-MM-DD"),
+});

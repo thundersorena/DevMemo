@@ -1,5 +1,3 @@
-
-
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -10,25 +8,34 @@ datasource db {
   provider = "postgresql"
 }
 
-
 model User {
-  id            String   @id
-  name          String
-  email         String   @unique
-  emailVerified Boolean  @default(false)
-  image         String?
-  timezone      String?
-  githubLogin   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id
+  name           String
+  email          String   @unique
+  emailVerified  Boolean  @default(false)
+  image          String?
+  timezone       String?
+  githubLogin    String?
+  /// Only import commits authored by this user (all Git integrations).
+  onlyOwnCommits Boolean  @default(true)
+  /// Extra emails the user commits with (matched for every Git provider).
+  authorEmails   String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  sessions Session[]
-  accounts Account[]
-  days       Day[]
-  notes      Note[]
-  commits    Commit[]
-  githubHook GitHubHook?
-  apiTokens  ApiToken[]
+  sessions            Session[]
+  accounts            Account[]
+  days                Day[]
+  notes               Note[]
+  commits             Commit[]
+  githubHook          GitHubHook?
+  apiTokens           ApiToken[]
+  githubInstallations GitHubInstallation[]
+  providerHooks       ProviderHook[]
+  oauthClients        OauthClient[]
+  oauthAccessTokens   OauthAccessToken[]
+  oauthRefreshTokens  OauthRefreshToken[]
+  oauthConsents       OauthConsent[]
 
   @@map("user")
 }
@@ -126,6 +133,8 @@ model Commit {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   dayId          String
   day            Day      @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  /// "github" | "gitlab" | "bitbucket"
+  provider       String   @default("github")
   sha            String
   repositoryId   String
   repositoryName String
@@ -152,7 +161,6 @@ model GitHubHook {
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// AES-256-GCM encrypted with a key derived from BETTER_AUTH_SECRET.
   secretEncrypted     String
-  onlyOwnCommits      Boolean   @default(true)
   lastDeliveryAt      DateTime?
   lastDeliveryStatus  String?
   lastDeliveryMessage String?
@@ -175,4 +183,236 @@ model ApiToken {
 
   @@index([userId])
   @@map("api_token")
+}
+
+/// A GitHub App installation linked to a DevMemo user. The same installation
+/// (e.g. an organization) can be linked by several members.
+model GitHubInstallation {
+  id                  String             @id @default(cuid())
+  userId              String
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// GitHub's numeric installation id.
+  installationId      String
+  accountLogin        String
+  /// "User" or "Organization".
+  accountType         String
+  /// "all" or "selected".
+  repositorySelection String
+  suspendedAt         DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  repositories        GitHubRepository[]
+
+  @@unique([userId, installationId])
+  @@index([installationId])
+  @@map("github_installation")
+}
+
+/// A repository reachable through an installation, with history-import status.
+model GitHubRepository {
+  id              String             @id @default(cuid())
+  installationRef String
+  installation    GitHubInstallation @relation(fields: [installationRef], references: [id], onDelete: Cascade)
+  /// GitHub's numeric repository id.
+  repoId          String
+  fullName        String
+  private         Boolean            @default(false)
+  defaultBranch   String?
+  /// pending | running | done | error
+  backfillStatus  String             @default("pending")
+  backfillMessage String?
+  backfilledAt    DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([installationRef, repoId])
+  @@map("github_repository")
+}
+
+/// Manual webhook endpoint for GitLab or Bitbucket:
+/// /api/webhooks/{provider}/{id}. One per user per provider.
+model ProviderHook {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "gitlab" | "bitbucket"
+  provider            String
+  /// AES-256-GCM encrypted with a key derived from BETTER_AUTH_SECRET.
+  secretEncrypted     String
+  lastDeliveryAt      DateTime?
+  lastDeliveryStatus  String?
+  lastDeliveryMessage String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([userId, provider])
+  @@map("provider_hook")
+}
+
+// ─── MCP OAuth (Better Auth jwt + @better-auth/mcp) ──────────────────────────
+// Field names follow the plugins' schema; don't rename them.
+
+model Jwks {
+  id         String    @id
+  publicKey  String
+  privateKey String
+  createdAt  DateTime
+  expiresAt  DateTime?
+  alg        String?
+  crv        String?
+
+  @@map("jwks")
+}
+
+model OauthClient {
+  id                               String    @id
+  clientId                         String    @unique
+  clientSecret                     String?
+  clientDiscoveryId                String?
+  disabled                         Boolean?  @default(false)
+  skipConsent                      Boolean?
+  enableEndSession                 Boolean?
+  subjectType                      String?
+  scopes                           String[]  @default([])
+  clientCredentialsScopes          String[]  @default([])
+  userId                           String?
+  user                             User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt                        DateTime?
+  updatedAt                        DateTime?
+  name                             String?
+  uri                              String?
+  icon                             String?
+  contacts                         String[]  @default([])
+  tos                              String?
+  policy                           String?
+  softwareId                       String?
+  softwareVersion                  String?
+  softwareStatement                String?
+  redirectUris                     String[]  @default([])
+  postLogoutRedirectUris           String[]  @default([])
+  backchannelLogoutUri             String?
+  backchannelLogoutSessionRequired Boolean?
+  tokenEndpointAuthMethod          String?
+  applicationType                  String?
+  jwks                             String?
+  jwksUri                          String?
+  grantTypes                       String[]  @default([])
+  responseTypes                    String[]  @default([])
+  requirePKCE                      Boolean?
+  dpopBoundAccessTokens            Boolean?  @default(false)
+  referenceId                      String?
+  metadata                         String?
+
+  @@index([userId])
+  @@map("oauth_client")
+}
+
+model OauthResource {
+  id                            String    @id
+  identifier                    String    @unique
+  name                          String
+  accessTokenTtl                Int?
+  refreshTokenTtl               Int?
+  signingAlgorithm              String?
+  signingKeyId                  String?
+  allowedScopes                 String[]  @default([])
+  customClaims                  String?
+  dpopBoundAccessTokensRequired Boolean?  @default(false)
+  disabled                      Boolean?  @default(false)
+  createdAt                     DateTime?
+  updatedAt                     DateTime?
+  policyVersion                 Int?      @default(1)
+  metadata                      String?
+
+  @@map("oauth_resource")
+}
+
+model OauthClientResource {
+  id         String    @id
+  clientId   String
+  resourceId String
+  metadata   String?
+  createdAt  DateTime?
+
+  @@index([clientId])
+  @@index([resourceId])
+  @@map("oauth_client_resource")
+}
+
+model OauthRefreshToken {
+  id                      String    @id
+  token                   String    @unique
+  clientId                String
+  sessionId               String?
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referenceId             String?
+  authorizationCodeId     String?
+  resources               String[]  @default([])
+  requestedUserInfoClaims String[]  @default([])
+  expiresAt               DateTime?
+  createdAt               DateTime?
+  revoked                 DateTime?
+  rotatedAt               DateTime?
+  rotationReplayResponse  String?
+  rotationReplayExpiresAt DateTime?
+  authTime                DateTime?
+  confirmation            String?
+  scopes                  String[]  @default([])
+
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([authorizationCodeId])
+  @@map("oauth_refresh_token")
+}
+
+model OauthAccessToken {
+  id                      String    @id
+  token                   String?   @unique
+  clientId                String
+  sessionId               String?
+  userId                  String?
+  user                    User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referenceId             String?
+  authorizationCodeId     String?
+  resources               String[]  @default([])
+  requestedUserInfoClaims String[]  @default([])
+  refreshId               String?
+  expiresAt               DateTime?
+  createdAt               DateTime?
+  revoked                 DateTime?
+  confirmation            String?
+  scopes                  String[]  @default([])
+
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([authorizationCodeId])
+  @@index([refreshId])
+  @@map("oauth_access_token")
+}
+
+model OauthConsent {
+  id                      String    @id
+  clientId                String
+  userId                  String?
+  user                    User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referenceId             String?
+  resources               String[]  @default([])
+  requestedUserInfoClaims String[]  @default([])
+  scopes                  String[]  @default([])
+  createdAt               DateTime?
+  updatedAt               DateTime?
+
+  @@index([clientId])
+  @@index([userId])
+  @@map("oauth_consent")
+}
+
+model OauthClientAssertion {
+  id        String   @id
+  expiresAt DateTime
+
+  @@map("oauth_client_assertion")
 }

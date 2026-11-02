@@ -20,17 +20,14 @@ export function McpTokens({
   const [error, setError] = useState<string | null>(null);
 
   const newToken = state?.ok ? state.secret : null;
-  const shownToken = newToken ?? "<YOUR_TOKEN>";
   const fmt = new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "medium" });
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted">
-        Connect Claude or any MCP client to your journal. Each client authenticates with a personal access
-        token. The same token also works for the REST API.
+        For scripts, the REST API, and MCP clients that can&apos;t sign in with OAuth. Send as{" "}
+        <code className="font-mono text-[13px]">Authorization: Bearer dm_…</code>.
       </p>
-
-      <CopyField label="MCP server URL" value={mcpUrl} />
 
       <form action={formAction} className="flex flex-wrap items-end gap-2">
         <div className="min-w-48 flex-1">
@@ -56,39 +53,12 @@ export function McpTokens({
         <div className="space-y-3 rounded-xl border border-workday/40 bg-workday/5 p-4">
           <p className="text-sm font-medium">Copy your token now. It won’t be shown again.</p>
           <CopyField label="Token" value={newToken} />
+          <CodeBlock
+            label="Example: Claude Code with this token instead of OAuth"
+            code={`claude mcp add --scope user --transport http devmemo ${mcpUrl} --header "Authorization: Bearer ${newToken}"`}
+          />
         </div>
       )}
-
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <CodeBlock
-            label="Claude Code (works in PowerShell, CMD and bash)"
-            code={`claude mcp add --scope user --transport http devmemo ${mcpUrl} --header "Authorization: Bearer ${shownToken}"`}
-          />
-          <p className="text-xs leading-relaxed text-muted">
-            <code className="font-mono">--scope user</code> makes DevMemo available in every project. Check the
-            connection with <code className="font-mono">claude mcp list</code>, then just ask in plain language,
-            for example “Add a note to today: fixed the login bug”. No slash command is needed; Claude picks the
-            right DevMemo tool itself.
-          </p>
-        </div>
-        <CodeBlock
-          label="Claude Desktop (claude_desktop_config.json)"
-          code={JSON.stringify(
-            {
-              mcpServers: {
-                devmemo: {
-                  command: "npx",
-                  args: ["-y", "mcp-remote", mcpUrl, "--header", "Authorization:${DEVMEMO_AUTH}"],
-                  env: { DEVMEMO_AUTH: `Bearer ${shownToken}` },
-                },
-              },
-            },
-            null,
-            2,
-          )}
-        />
-      </div>
 
       <div>
         <p className="mb-2 text-xs font-medium text-muted">Active tokens</p>

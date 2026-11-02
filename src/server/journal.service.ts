@@ -24,6 +24,7 @@ export type NoteView = {
 
 export type CommitView = {
   id: string;
+  provider: string;
   sha: string;
   repositoryId: string;
   repositoryName: string;
@@ -56,11 +57,6 @@ export type MonthView = {
   days: MonthDayView[];
 };
 
-export type SearchResult =
-  | { type: "note"; id: string; date: DateKey; text: string; source: NoteSource }
-  | { type: "commit"; id: string; date: DateKey; text: string; repositoryName: string; url: string }
-  | { type: "summary"; id: string; date: DateKey; text: string };
-
 // ─── Mappers ───────────────────────────────────────────────────────────────
 
 const noteSelect = {
@@ -73,6 +69,7 @@ const noteSelect = {
 
 const commitSelect = {
   id: true,
+  provider: true,
   sha: true,
   repositoryId: true,
   repositoryName: true,
@@ -160,6 +157,12 @@ export async function getRange(userId: string, from: DateKey, to: DateKey): Prom
     .filter((d) => d.isWorkDay || d.summary || d.notes.length > 0 || d.commits.length > 0);
 }
 
+/** Earliest journal date of the user, or null if the journal is empty. */
+export async function getFirstDate(userId: string): Promise<DateKey | null> {
+  const first = await db.day.findFirst({ where: { userId }, orderBy: { date: "asc" }, select: { date: true } });
+  return first ? dbToDateKey(first.date) : null;
+}
+
 export async function getMonth(userId: string, month: MonthKey): Promise<MonthView> {
   const { start, end } = monthRange(month);
   const days = await db.day.findMany({
@@ -206,72 +209,6 @@ export async function getCommits(
     orderBy: { committedAt: "asc" },
   });
   return commits.map(toCommitView);
-}
-
-/**
- * Plain database text search (ILIKE) across notes, commit messages,
- * repository names and summaries. Good enough for a personal journal;
- * upgrade to pg_trgm / tsvector only if real usage needs it.
- */
-export async function searchJournal(
-  userId: string,
-  query: string,
-  limit = 30,
-): Promise<SearchResult[]> {
-  const contains = { contains: query, mode: "insensitive" as const };
-
-  const [notes, commits, summaries] = await Promise.all([
-    db.note.findMany({
-      where: { userId, content: contains },
-      select: { id: true, content: true, source: true, day: { select: { date: true } } },
-      orderBy: { day: { date: "desc" } },
-      take: limit,
-    }),
-    db.commit.findMany({
-      where: { userId, OR: [{ message: contains }, { repositoryName: contains }] },
-      select: {
-        id: true,
-        message: true,
-        repositoryName: true,
-        url: true,
-        day: { select: { date: true } },
-      },
-      orderBy: { committedAt: "desc" },
-      take: limit,
-    }),
-    db.day.findMany({
-      where: { userId, summary: contains },
-      select: { id: true, date: true, summary: true },
-      orderBy: { date: "desc" },
-      take: limit,
-    }),
-  ]);
-
-  const results: SearchResult[] = [
-    ...notes.map((n) => ({
-      type: "note" as const,
-      id: n.id,
-      date: dbToDateKey(n.day.date),
-      text: n.content,
-      source: n.source,
-    })),
-    ...commits.map((c) => ({
-      type: "commit" as const,
-      id: c.id,
-      date: dbToDateKey(c.day.date),
-      text: c.message,
-      repositoryName: c.repositoryName,
-      url: c.url,
-    })),
-    ...summaries.map((d) => ({
-      type: "summary" as const,
-      id: d.id,
-      date: dbToDateKey(d.date),
-      text: d.summary ?? "",
-    })),
-  ];
-
-  return results.sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit);
 }
 
 // ─── Mutations ─────────────────────────────────────────────────────────────
@@ -342,6 +279,7 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
 export async function importCommits(
   userId: string,
   commits: CommitInput[],
+  provider: "github" | "gitlab" | "bitbucket" = "github",
 ): Promise<{ imported: number; duplicates: number }> {
   if (commits.length === 0) return { imported: 0, duplicates: 0 };
 
@@ -360,6 +298,7 @@ export async function importCommits(
         data: list.map((c) => ({
           userId,
           dayId: day.id,
+          provider,
           sha: c.sha,
           repositoryId: c.repositoryId,
           repositoryName: c.repositoryName,

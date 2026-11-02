@@ -1,21 +1,35 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { addNote, deleteNote, updateDay, updateNote } from "@/server/journal.service";
 import { requireUser } from "@/server/session";
-import { updateUserTimezone } from "@/server/user.service";
+import { updateAuthorEmails, updateOnlyOwnCommits, updateUserTimezone } from "@/server/user.service";
+import {
+  createProviderHook,
+  deleteProviderHook,
+  revealProviderSecret,
+  rotateProviderSecret,
+} from "@/server/git/provider-hooks.service";
+import { PROVIDERS } from "@/server/git/providers";
+import { revokeConnectedApp } from "@/server/oauth-apps.service";
 import {
   createHook,
   deleteHook,
   revealHookSecret,
   rotateHookSecret,
-  setOnlyOwnCommits,
 } from "@/server/github/github.service";
+import {
+  backfillRepositories,
+  requestReimport,
+  unlinkInstallation,
+} from "@/server/github/app.service";
 import { createToken, revokeToken } from "@/server/api-token.service";
 import { AppError } from "@/server/errors";
 import {
+  authorEmailsSchema,
   dateKeySchema,
   noteContentSchema,
   updateSettingsSchema,
@@ -150,7 +164,7 @@ export async function rotateHookSecretAction(): Promise<SecretResult> {
 export async function setOnlyOwnCommitsAction(value: boolean): Promise<ActionResult> {
   try {
     const user = await requireUser();
-    await setOnlyOwnCommits(user.id, z.boolean().parse(value));
+    await updateOnlyOwnCommits(user.id, z.boolean().parse(value));
     revalidatePath("/settings");
     return { ok: true };
   } catch (error) {
@@ -192,6 +206,110 @@ export async function revokeTokenAction(tokenId: string): Promise<ActionResult> 
   try {
     const user = await requireUser();
     await revokeToken(user.id, z.string().min(1).max(64).parse(tokenId));
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ─── GitHub App ─────────────────────────────────────────────────────────────
+
+export async function reimportHistoryAction(): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const ids = await requestReimport(user.id);
+    if (ids.length) after(() => backfillRepositories(ids));
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function unlinkInstallationAction(id: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    await unlinkInstallation(user.id, z.string().min(1).max(64).parse(id));
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ─── GitLab / Bitbucket webhooks ────────────────────────────────────────────
+
+const providerSchema = z.enum(PROVIDERS);
+
+export async function createProviderHookAction(provider: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    await createProviderHook(user.id, providerSchema.parse(provider));
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function revealProviderSecretAction(provider: string): Promise<SecretResult> {
+  try {
+    const user = await requireUser();
+    return { ok: true, secret: await revealProviderSecret(user.id, providerSchema.parse(provider)) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function rotateProviderSecretAction(provider: string): Promise<SecretResult> {
+  try {
+    const user = await requireUser();
+    const secret = await rotateProviderSecret(user.id, providerSchema.parse(provider));
+    revalidatePath("/settings");
+    return { ok: true, secret };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function deleteProviderHookAction(provider: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    await deleteProviderHook(user.id, providerSchema.parse(provider));
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ─── Commit emails ──────────────────────────────────────────────────────────
+
+export async function updateAuthorEmailsAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const raw = String(formData.get("emails") ?? "");
+    const emails = authorEmailsSchema.parse(
+      raw.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean),
+    );
+    await updateAuthorEmails(user.id, [...new Set(emails)]);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ─── Connected OAuth apps (MCP) ─────────────────────────────────────────────
+
+export async function revokeConnectedAppAction(clientId: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    await revokeConnectedApp(user.id, z.string().min(1).max(512).parse(clientId));
     revalidatePath("/settings");
     return { ok: true };
   } catch (error) {

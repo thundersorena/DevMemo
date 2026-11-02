@@ -7,6 +7,7 @@ import {
   monthGrid,
   monthRange,
   parseMonthParam,
+  weekRange,
 } from "./dates";
 
 describe("isValidDateKey", () => {
@@ -57,5 +58,16 @@ describe("monthGrid", () => {
     expect(grid[0]).toBe("2026-10-26"); // Monday
     expect(grid.at(-1)).toBe("2026-12-06"); // Sunday
     expect(grid).toContain("2026-11-30");
+  });
+});
+
+describe("weekRange", () => {
+  it("returns Monday to Sunday", () => {
+    expect(weekRange("2026-11-04")).toEqual({ start: "2026-11-02", end: "2026-11-08" }); // Wednesday
+    expect(weekRange("2026-11-02")).toEqual({ start: "2026-11-02", end: "2026-11-08" }); // Monday
+    expect(weekRange("2026-11-08")).toEqual({ start: "2026-11-02", end: "2026-11-08" }); // Sunday
+  });
+  it("supports week offsets across months", () => {
+    expect(weekRange("2026-11-02", -1)).toEqual({ start: "2026-10-26", end: "2026-11-01" });
   });
 });

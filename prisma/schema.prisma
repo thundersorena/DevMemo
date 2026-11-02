@@ -1,0 +1,152 @@
+
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  timezone      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+  days     Day[]
+  notes    Note[]
+  commits  Commit[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ─── Journal ─────────────────────────────────────────────────────────────────
+
+/// One record per user per calendar date. Created lazily the first time a
+/// date gets a note, a workday flag, a summary, or a commit.
+model Day {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Calendar date in the user's timezone (no time component).
+  date      DateTime @db.Date
+  isWorkDay Boolean  @default(false)
+  summary   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notes   Note[]
+  commits Commit[]
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("day")
+}
+
+enum NoteSource {
+  MANUAL
+  MCP
+  TELEGRAM
+}
+
+/// Notes are separate rows so that UI edits and AI/MCP appends never
+/// overwrite each other, and so every note keeps its origin.
+model Note {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayId     String
+  day       Day        @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  content   String
+  source    NoteSource @default(MANUAL)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([dayId, createdAt])
+  @@index([userId])
+  @@map("note")
+}
+
+/// Git commit metadata imported from a provider (GitHub first).
+model Commit {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayId          String
+  day            Day      @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  sha            String
+  repositoryId   String
+  repositoryName String
+  message        String
+  branch         String?
+  url            String
+  authorName     String?
+  authorEmail    String?
+  committedAt    DateTime
+  createdAt      DateTime @default(now())
+
+  /// SHA is unique per user: retried webhook deliveries are idempotent,
+  /// and two users who share a repository each keep their own copy.
+  @@unique([userId, sha])
+  @@index([dayId])
+  @@index([userId, repositoryName])
+  @@map("commit")
+}

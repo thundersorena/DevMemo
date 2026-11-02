@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fafaf9;
+  --surface: #ffffff;
+  --surface-muted: #f4f4f3;
+  --foreground: #18181b;
+  --muted: #71717a;
+  --border: #e7e5e4;
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+  --workday: #059669;
+  --git: #7c3aed;
+  --danger: #dc2626;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0c0c0e;
+    --surface: #141417;
+    --surface-muted: #1c1c20;
+    --foreground: #ececee;
+    --muted: #8b8b94;
+    --border: #27272c;
+    --accent: #818cf8;
+    --accent-foreground: #0c0c0e;
+    --workday: #34d399;
+    --git: #a78bfa;
+    --danger: #f87171;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-workday: var(--workday);
+  --color-git: var(--git);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+}

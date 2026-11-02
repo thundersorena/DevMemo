@@ -22,11 +22,18 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // suppressHydrationWarning: browser extensions (e.g. ColorZilla, Grammarly,
+    // password managers) inject attributes into <html>/<body> before React
+    // hydrates. This only silences attribute mismatches on these two elements,
+    // not in the rest of the tree.
     <html
       lang="en"
       className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col font-sans">{children}</body>
+      <body className="flex min-h-full flex-col font-sans" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

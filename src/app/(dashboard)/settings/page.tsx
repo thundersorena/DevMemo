@@ -13,7 +13,7 @@ import { CopyField } from "@/components/settings/copy-field";
 import { listConnectedApps } from "@/server/oauth-apps.service";
 import { SettingsForm } from "@/components/settings/timezone-form";
 import { listTokens } from "@/server/api-token.service";
-import { env, githubApp } from "@/server/env";
+import { env, githubAppState } from "@/server/env";
 import { BACKFILL_DAYS, installUrl, listInstallations } from "@/server/github/app.service";
 import { getHook } from "@/server/github/github.service";
 import { requireUser } from "@/server/session";
@@ -67,7 +67,7 @@ async function Preferences() {
 async function GitHubSection({ searchParams }: Pick<PageProps<"/settings">, "searchParams">) {
   const user = await requireUser();
   const params = await searchParams;
-  const app = githubApp();
+  const { config: app, error: appError } = githubAppState();
   const [hook, installations, prefs] = await Promise.all([
     getHook(user.id),
     app ? listInstallations(user.id) : Promise.resolve([]),
@@ -86,6 +86,13 @@ async function GitHubSection({ searchParams }: Pick<PageProps<"/settings">, "sea
       {params.github === "error" && (
         <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
           {typeof params.reason === "string" ? params.reason : "Could not connect GitHub."}
+        </p>
+      )}
+
+      {appError && (
+        <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+          GitHub App is disabled: {appError}. Fix the environment variables and redeploy; the manual webhook below
+          still works.
         </p>
       )}
 

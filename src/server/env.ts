@@ -1,4 +1,5 @@
 import "server-only";
+import { createPrivateKey } from "node:crypto";
 import { z } from "zod";
 import { isValidTimeZone } from "@/lib/dates";
 
@@ -94,43 +95,72 @@ export type GitHubAppConfig = {
  * multi-line values), or base64-encoded.
  */
 function normalizePrivateKey(raw: string): string {
-  const value = raw.trim().replace(/^"|"$/g, "");
-  if (value.includes("-----BEGIN")) return value.replace(/\\n/g, "\n");
-  const decoded = Buffer.from(value, "base64").toString("utf8");
-  if (decoded.includes("-----BEGIN")) return decoded;
-  throw new Error("GITHUB_APP_PRIVATE_KEY is not a PEM private key (raw, \\n-escaped or base64)");
+  const value = raw.trim().replace(/^"|"$/g, "").replace(/\r/g, "");
+  let pem: string;
+  if (value.includes("-----BEGIN")) {
+    pem = value.replace(/\\n/g, "\n");
+  } else {
+    pem = Buffer.from(value, "base64").toString("utf8");
+    if (!pem.includes("-----BEGIN")) {
+      throw new Error("GITHUB_APP_PRIVATE_KEY is not a PEM private key (paste the .pem contents, \\n-escaped, or base64)");
+    }
+  }
+  try {
+    createPrivateKey(pem);
+  } catch {
+    throw new Error("GITHUB_APP_PRIVATE_KEY could not be parsed. Paste the whole .pem file including the BEGIN/END lines");
+  }
+  return pem;
 }
 
-let appCached: GitHubAppConfig | null | undefined;
+type GitHubAppState = { config: GitHubAppConfig | null; error: string | null };
+let appState: GitHubAppState | undefined;
+
+function loadGitHubApp(): GitHubAppState {
+  const present = GITHUB_APP_KEYS.filter((k) => process.env[k]?.trim());
+  if (present.length === 0) return { config: null, error: null };
+  if (present.length !== GITHUB_APP_KEYS.length) {
+    const missing = GITHUB_APP_KEYS.filter((k) => !present.includes(k));
+    return { config: null, error: `GitHub App is partially configured. Missing: ${missing.join(", ")}` };
+  }
+  let privateKey: string;
+  try {
+    privateKey = normalizePrivateKey(process.env.GITHUB_APP_PRIVATE_KEY!);
+  } catch (error) {
+    return { config: null, error: error instanceof Error ? error.message : "Invalid GITHUB_APP_PRIVATE_KEY" };
+  }
+  if (!/^\d+$/.test(process.env.GITHUB_APP_ID!.trim())) {
+    return { config: null, error: "GITHUB_APP_ID must be the numeric App ID shown on the App's settings page" };
+  }
+  return {
+    error: null,
+    config: {
+      appId: process.env.GITHUB_APP_ID!.trim(),
+      slug: process.env.GITHUB_APP_SLUG!.trim(),
+      clientId: process.env.GITHUB_APP_CLIENT_ID!.trim(),
+      clientSecret: process.env.GITHUB_APP_CLIENT_SECRET!.trim(),
+      webhookSecret: process.env.GITHUB_APP_WEBHOOK_SECRET!.trim(),
+      privateKey,
+      apiUrl: (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/$/, ""),
+      webUrl: (process.env.GITHUB_WEB_URL || "https://github.com").replace(/\/$/, ""),
+    },
+  };
+}
 
 /**
- * GitHub App configuration, or null when the App isn't configured (the
- * manual webhook still works). Partial configuration is an error.
+ * GitHub App configuration, or null when the App isn't configured or is
+ * misconfigured. A misconfiguration never crashes pages: the App is treated
+ * as unavailable, the problem is logged once, and Settings shows it.
  */
 export function githubApp(): GitHubAppConfig | null {
-  if (appCached !== undefined) return appCached;
-  const present = GITHUB_APP_KEYS.filter((k) => process.env[k]?.trim());
-  if (present.length === 0) {
-    appCached = null;
-    return null;
-  }
-  if (present.length !== GITHUB_APP_KEYS.length && !isBuildPhase) {
-    const missing = GITHUB_APP_KEYS.filter((k) => !present.includes(k));
-    throw new Error(
-      `Invalid environment configuration:\n  - GitHub App is partially configured. Missing: ${missing.join(", ")}`,
-    );
-  }
-  if (isBuildPhase && present.length !== GITHUB_APP_KEYS.length) return null;
+  return githubAppState().config;
+}
 
-  appCached = {
-    appId: process.env.GITHUB_APP_ID!.trim(),
-    slug: process.env.GITHUB_APP_SLUG!.trim(),
-    clientId: process.env.GITHUB_APP_CLIENT_ID!.trim(),
-    clientSecret: process.env.GITHUB_APP_CLIENT_SECRET!.trim(),
-    webhookSecret: process.env.GITHUB_APP_WEBHOOK_SECRET!.trim(),
-    privateKey: normalizePrivateKey(process.env.GITHUB_APP_PRIVATE_KEY!),
-    apiUrl: (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/$/, ""),
-    webUrl: (process.env.GITHUB_WEB_URL || "https://github.com").replace(/\/$/, ""),
-  };
-  return appCached;
+/** Configuration plus a human-readable problem (names only, never values). */
+export function githubAppState(): GitHubAppState {
+  if (appState) return appState;
+  const state = loadGitHubApp();
+  if (state.error && !isBuildPhase) console.error(`[env] ${state.error}`);
+  if (!isBuildPhase) appState = state;
+  return state;
 }

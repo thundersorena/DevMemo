@@ -228,7 +228,7 @@ export default function LandingPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-sm text-muted sm:px-6">
-          <Logo className="text-foreground" />
+          <Logo size="sm" />
           <p>Open source under the MIT License.</p>
           <a href={REPO_URL} target="_blank" rel="noreferrer" className="transition hover:text-foreground">
             GitHub

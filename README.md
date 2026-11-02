@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/brand/logo-dark.png">
+    <img src="public/brand/logo-light.png" alt="DevMemo" height="64">
+  </picture>
+</p>
+
 # DevMemo
 ## Your Developer Memory, Connected.
 
@@ -59,9 +66,12 @@ Create a token in **Settings → AI assistants (MCP)**, then:
 
 ```bash
 # Claude Code
-claude mcp add --transport http devmemo http://localhost:3000/api/mcp \
-  --header "Authorization: Bearer dm_..."
+claude mcp add --scope user --transport http devmemo http://localhost:3000/api/mcp --header "Authorization: Bearer dm_..."
 ```
+
+Keep the command on one line: the trailing `\` line continuation of bash doesn't work in PowerShell.
+`--scope user` makes DevMemo available in every project. Verify with `claude mcp list`, then ask in plain
+language (e.g. "Add a note to today: fixed the login bug"). MCP tools are not slash commands.
 
 For Claude Desktop, Settings shows a ready-to-paste `claude_desktop_config.json` entry (uses `mcp-remote`).
 

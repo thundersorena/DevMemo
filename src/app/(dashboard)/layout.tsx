@@ -18,7 +18,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/">) {
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
           <div className="flex min-w-0 items-center gap-3 sm:gap-6">
             <Link href="/calendar" aria-label="DevMemo home" className="shrink-0">
-              <Logo compact />
+              <Logo compact priority />
             </Link>
             <nav className="-mx-1 flex min-w-0 items-center gap-0.5 overflow-x-auto px-1 sm:gap-1">
               <Suspense fallback={<NavLinksFallback items={NAV} />}>

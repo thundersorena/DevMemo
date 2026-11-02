@@ -9,7 +9,7 @@ export function LandingHeader() {
     <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link href="/" aria-label="DevMemo home" className="shrink-0">
-          <Logo />
+          <Logo priority />
         </Link>
         <nav className="hidden items-center gap-1 md:flex" aria-label="Sections">
           {[

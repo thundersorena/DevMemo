@@ -8,7 +8,7 @@ export default function LoginPage() {
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm">
-        <Logo className="mb-10 text-lg" />
+        <Logo size="lg" priority className="mb-10" />
         <h1 className="text-2xl font-semibold tracking-tight">Your developer memory.</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-muted">
           A daily journal for what you did, investigated and decided, connected to your

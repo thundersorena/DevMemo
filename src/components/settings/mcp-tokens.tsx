@@ -60,10 +60,18 @@ export function McpTokens({
       )}
 
       <div className="space-y-4">
-        <CodeBlock
-          label="Claude Code"
-          code={`claude mcp add --transport http devmemo ${mcpUrl} \\\n  --header "Authorization: Bearer ${shownToken}"`}
-        />
+        <div className="space-y-2">
+          <CodeBlock
+            label="Claude Code (works in PowerShell, CMD and bash)"
+            code={`claude mcp add --scope user --transport http devmemo ${mcpUrl} --header "Authorization: Bearer ${shownToken}"`}
+          />
+          <p className="text-xs leading-relaxed text-muted">
+            <code className="font-mono">--scope user</code> makes DevMemo available in every project. Check the
+            connection with <code className="font-mono">claude mcp list</code>, then just ask in plain language,
+            for example “Add a note to today: fixed the login bug”. No slash command is needed; Claude picks the
+            right DevMemo tool itself.
+          </p>
+        </div>
         <CodeBlock
           label="Claude Desktop (claude_desktop_config.json)"
           code={JSON.stringify(

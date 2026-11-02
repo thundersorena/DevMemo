@@ -1,13 +1,64 @@
-export function Logo({ className = "", compact = false }: { className?: string; compact?: boolean }) {
+import Image from "next/image";
+import logoDark from "../../../public/brand/logo-dark.png";
+import logoLight from "../../../public/brand/logo-light.png";
+import logoMark from "../../../public/brand/logo-mark.png";
+
+const SIZES = {
+  sm: 24,
+  md: 28,
+  lg: 36,
+} as const;
+
+/**
+ * DevMemo logo.
+ * - The wordmark has a light-mode variant (dark "dev") and a dark-mode
+ *   variant (original light "dev"), switched with the color scheme.
+ * - `compact` shows only the mark on small screens.
+ */
+export function Logo({
+  className = "",
+  compact = false,
+  size = "md",
+  priority = false,
+}: {
+  className?: string;
+  compact?: boolean;
+  size?: keyof typeof SIZES;
+  priority?: boolean;
+}) {
+  const height = SIZES[size];
+  const wordmarkWidth = Math.round((logoLight.width / logoLight.height) * height);
+
   return (
-    <span className={`inline-flex items-center gap-2 font-semibold tracking-tight ${className}`}>
-      <span
-        aria-hidden
-        className="grid size-7 place-items-center rounded-lg bg-foreground font-mono text-xs text-background"
-      >
-        dm
+    <span className={`inline-flex items-center ${className}`}>
+      <span className={compact ? "hidden sm:inline-flex" : "inline-flex"}>
+        <Image
+          src={logoLight}
+          alt="DevMemo"
+          height={height}
+          width={wordmarkWidth}
+          priority={priority}
+          className="dark:hidden"
+        />
+        <Image
+          src={logoDark}
+          alt="DevMemo"
+          height={height}
+          width={wordmarkWidth}
+          priority={priority}
+          className="hidden dark:block"
+        />
       </span>
-      <span className={compact ? "hidden sm:inline" : ""}>DevMemo</span>
+      {compact && (
+        <Image
+          src={logoMark}
+          alt="DevMemo"
+          height={height}
+          width={height}
+          priority={priority}
+          className="sm:hidden"
+        />
+      )}
     </span>
   );
 }

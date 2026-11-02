@@ -51,6 +51,17 @@ export function env(): Env {
       .join("\n");
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
+  // A deployed app pointing auth at localhost sends GitHub a localhost
+  // redirect_uri ("redirect_uri is not associated with this application").
+  // Fail loudly instead.
+  const authHost = new URL(parsed.data.BETTER_AUTH_URL).hostname;
+  if (process.env.VERCEL === "1" && (authHost === "localhost" || authHost === "127.0.0.1")) {
+    throw new Error(
+      "Invalid environment configuration:\n  - BETTER_AUTH_URL points to localhost on a deployed app. " +
+        "Set it to your public URL (e.g. https://devmemo.example.com) in your hosting provider's environment variables.",
+    );
+  }
+
   cached = parsed.data;
   return cached;
 }

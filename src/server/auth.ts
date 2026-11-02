@@ -20,7 +20,7 @@ export const auth = betterAuth({
     github: {
       clientId: config.GITHUB_CLIENT_ID,
       clientSecret: config.GITHUB_CLIENT_SECRET,
-      scope: ["read:user", "user:email"],
+      // Better Auth already requests read:user and user:email for GitHub.
       // Keep name, avatar and username in sync with GitHub on every sign-in.
       overrideUserInfoOnSignIn: true,
       mapProfileToUser: (profile) => ({ githubLogin: profile.login }),

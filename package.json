@@ -17,6 +17,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@better-auth/cimd": "^1.7.15",
+    "@better-auth/mcp": "^1.7.15",
+    "@better-auth/oauth-provider": "^1.7.15",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",

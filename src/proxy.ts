@@ -11,7 +11,10 @@ export function proxy(request: NextRequest) {
   const hasSession = Boolean(getSessionCookie(request));
 
   if (pathname === "/login") {
-    return hasSession
+    // An OAuth authorization (e.g. an MCP client asking to re-login) carries a
+    // signed query; let it through so the flow can continue after sign-in.
+    const isOAuthFlow = request.nextUrl.searchParams.has("sig");
+    return hasSession && !isOAuthFlow
       ? NextResponse.redirect(new URL("/calendar", request.url))
       : NextResponse.next();
   }
@@ -26,5 +29,5 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // "/" is the public landing page and is intentionally not matched.
-  matcher: ["/login", "/calendar/:path*", "/journal/:path*", "/search/:path*", "/settings/:path*"],
+  matcher: ["/login", "/calendar/:path*", "/journal/:path*", "/search/:path*", "/settings/:path*", "/reports/:path*", "/repos/:path*"],
 };

@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -7,6 +7,9 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: env("DATABASE_URL"),
+    // `prisma generate` (run on install) doesn't connect, so it must not
+    // require DATABASE_URL (CI/Docker installs). migrate/studio fail clearly
+    // with "Connection url is empty" when it's missing.
+    url: process.env.DATABASE_URL ?? "",
   },
 });

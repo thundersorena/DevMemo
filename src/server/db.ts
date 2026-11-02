@@ -1,13 +1,13 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { env } from "./env";
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DATABASE_URL is not set");
-  }
-  const adapter = new PrismaPg({ connectionString });
+  // env() validates DATABASE_URL at runtime and supplies a placeholder during
+  // `next build` (Docker/CI builds have no database). The pg adapter connects
+  // lazily, so nothing connects until the first query.
+  const adapter = new PrismaPg({ connectionString: env().DATABASE_URL });
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],

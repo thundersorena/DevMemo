@@ -7,6 +7,8 @@ import { Logo } from "@/components/ui/logo";
 const NAV: NavItem[] = [
   { href: "/calendar", match: "/calendar", label: "Calendar" },
   { href: "/journal/today", match: "/journal", label: "Journal" },
+  { href: "/reports", match: "/reports", label: "Reports" },
+  { href: "/repos", match: "/repos", label: "Repos" },
   { href: "/search", match: "/search", label: "Search" },
   { href: "/settings", match: "/settings", label: "Settings" },
 ];

@@ -155,3 +155,10 @@ export function formatTime(instant: Date, timeZone: string): string {
     minute: "2-digit",
   }).format(instant);
 }
+
+/** Monday-to-Sunday week containing `key` (offset in weeks, e.g. -1 = previous week). */
+export function weekRange(key: DateKey, offsetWeeks = 0): { start: DateKey; end: DateKey } {
+  const weekday = (dateKeyToDb(key).getUTCDay() + 6) % 7; // Monday = 0
+  const start = addDays(key, -weekday + offsetWeeks * 7);
+  return { start, end: addDays(start, 6) };
+}

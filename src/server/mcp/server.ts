@@ -1,9 +1,18 @@
 import "server-only";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ErrorCode, McpError, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { NoteSource } from "@/generated/prisma/client";
-import { addDays, dateKeyToDb, formatLongDate, todayKey } from "@/lib/dates";
+import {
+  addDays,
+  dateKeyToDb,
+  formatLongDate,
+  isValidDateKey,
+  todayKey,
+  weekRange,
+  type DateKey,
+} from "@/lib/dates";
+import { dayToMarkdown, daysToMarkdown } from "../journal-format";
 import {
   dateKeySchema,
   noteContentSchema,
@@ -16,9 +25,9 @@ import {
   getDay,
   getMonth,
   getRange,
-  searchJournal,
   updateDay,
 } from "../journal.service";
+import { searchJournal } from "../search.service";
 import type { CurrentUser } from "../session";
 
 const MAX_RANGE_DAYS = 62;
@@ -164,14 +173,29 @@ export function createMcpServer(user: CurrentUser): McpServer {
     {
       title: "Search the journal",
       description:
-        "Text search across notes, commit messages, repository names and summaries. Returns matches with their dates, newest first.",
+        'Full-text search across notes, commit messages, repository names and summaries, ranked by relevance. Supports "exact phrases", OR, and -excluded words. Returns full matching texts with their dates, best matches first.',
       inputSchema: {
         query: z.string().trim().min(2).max(200),
+        types: z.array(z.enum(["note", "commit", "summary"])).optional().describe("Limit to these result types"),
+        from: dateKeySchema.optional().describe("Only on or after this date (YYYY-MM-DD)"),
+        to: dateKeySchema.optional().describe("Only on or before this date (YYYY-MM-DD)"),
+        repository: z.string().trim().min(1).max(200).optional().describe("Only commits from this exact repository name"),
         limit: z.number().int().min(1).max(100).optional(),
       },
       annotations: { readOnlyHint: true },
     },
-    safe(async ({ query, limit }) => json(await searchJournal(user.id, query, limit ?? 30))),
+    safe(async ({ query, types, from, to, repository, limit }) =>
+      json(
+        (await searchJournal(user.id, query, { types, from, to, repository, limit: limit ?? 30 })).map(
+          // Models get the full text; the excerpt is for the web UI.
+          (result) => {
+            const { snippet, ...rest } = result;
+            void snippet;
+            return rest;
+          },
+        ),
+      ),
+    ),
   );
 
   server.registerTool(
@@ -209,5 +233,159 @@ export function createMcpServer(user: CurrentUser): McpServer {
     }),
   );
 
+  registerPrompts(server, user);
+  registerResources(server, user);
   return server;
+}
+
+// ─── Prompts ───────────────────────────────────────────────────────────────
+
+const GROUNDING = `Use only the journal data above. Don't invent work, decisions or outcomes. Notes describe what happened; commits describe what changed. An investigation is not a finished task unless the data says so. If the data is thin, say so briefly instead of padding.`;
+
+function resolveDate(input: string | undefined, today: DateKey): DateKey {
+  const value = input?.trim().toLowerCase();
+  if (!value || value === "today") return today;
+  if (value === "yesterday") return addDays(today, -1);
+  if (isValidDateKey(value)) return value;
+  throw new McpError(ErrorCode.InvalidParams, `Invalid date "${input}". Use YYYY-MM-DD, "today" or "yesterday".`);
+}
+
+function promptText(text: string) {
+  return { messages: [{ role: "user" as const, content: { type: "text" as const, text } }] };
+}
+
+function registerPrompts(server: McpServer, user: CurrentUser) {
+  server.registerPrompt(
+    "weekly_report",
+    {
+      title: "Weekly report",
+      description: "Write a weekly development report from your DevMemo journal (notes + commits).",
+      argsSchema: {
+        week: z
+          .string()
+          .optional()
+          .describe("'this' (default), 'last', or any date (YYYY-MM-DD) inside the week"),
+      },
+    },
+    async ({ week }) => {
+      const today = todayKey(user.timezone);
+      const value = week?.trim().toLowerCase();
+      const anchor = !value || value === "this" ? today : value === "last" ? addDays(today, -7) : resolveDate(value, today);
+      const { start, end } = weekRange(anchor);
+      const days = await getRange(user.id, start, end);
+      const journal = daysToMarkdown(days, user.timezone, `Journal ${start} → ${end}`);
+      return promptText(`${journal}
+---
+Write my weekly development report for ${formatLongDate(start)} – ${formatLongDate(end)}.
+
+Structure:
+1. **Highlights**: the 3–5 most important things, one line each.
+2. **By project**: a short paragraph per repository/project.
+3. **Decisions**: technical decisions recorded in notes.
+4. **Investigations & open items**: what was explored, what's unresolved or blocked.
+
+${GROUNDING}`);
+    },
+  );
+
+  server.registerPrompt(
+    "daily_standup",
+    {
+      title: "Daily standup",
+      description: "Draft a standup update (yesterday / today / blockers) from your journal.",
+      argsSchema: { date: z.string().optional().describe("The standup day: 'today' (default) or YYYY-MM-DD") },
+    },
+    async ({ date }) => {
+      const day = resolveDate(date, todayKey(user.timezone));
+      // "Yesterday" = the most recent earlier day with activity (skips weekends and days off).
+      const recent = await getRange(user.id, addDays(day, -7), addDays(day, -1));
+      const previous = recent.at(-1);
+      const current = await getDay(user.id, day);
+      const context = [
+        previous ? dayToMarkdown(previous, user.timezone) : "_No activity in the previous 7 days._\n",
+        dayToMarkdown(current, user.timezone),
+      ].join("\n");
+      return promptText(`${context}
+---
+Draft my standup for ${formatLongDate(day)} in three short sections: **Yesterday** (from ${
+        previous ? formatLongDate(previous.date) : "the previous working day"
+      }), **Today** (plans or work already logged today), **Blockers**. Bullet points, at most 5 per section, plain language a teammate can scan.
+
+${GROUNDING}`);
+    },
+  );
+
+  server.registerPrompt(
+    "summarize_day",
+    {
+      title: "Summarize a day",
+      description: "Summarize one journal day and save the summary to DevMemo.",
+      argsSchema: { date: z.string().optional().describe("'today' (default), 'yesterday' or YYYY-MM-DD") },
+    },
+    async ({ date }) => {
+      const day = resolveDate(date, todayKey(user.timezone));
+      const entry = await getDay(user.id, day);
+      return promptText(`${dayToMarkdown(entry, user.timezone)}
+---
+Write a 2–5 sentence summary of this day: what I worked on, what was decided, what's still open. Then save it by calling the \`update_day\` tool with \`date: "${day}"\` and \`summary\` set to your text. ${
+        entry.summary ? "It replaces the existing summary shown above." : ""
+      }
+
+${GROUNDING}`);
+    },
+  );
+}
+
+// ─── Resources ─────────────────────────────────────────────────────────────
+
+const RECENT_DAYS = 30;
+
+function registerResources(server: McpServer, user: CurrentUser) {
+  server.registerResource(
+    "journal-day",
+    new ResourceTemplate("devmemo://day/{date}", {
+      // Recent days with activity, newest first.
+      list: async () => {
+        const today = todayKey(user.timezone);
+        const days = await getRange(user.id, addDays(today, -(RECENT_DAYS - 1)), today);
+        return {
+          resources: days.reverse().map((d) => ({
+            uri: `devmemo://day/${d.date}`,
+            name: d.date,
+            title: formatLongDate(d.date),
+            mimeType: "text/markdown",
+            description: `${d.notes.length} note(s), ${d.commits.length} commit(s)${d.isWorkDay ? ", workday" : ""}`,
+          })),
+        };
+      },
+    }),
+    {
+      title: "Journal day",
+      description: "One day of your DevMemo journal (notes, commits, summary) as Markdown.",
+      mimeType: "text/markdown",
+    },
+    async (uri, variables) => {
+      const raw = Array.isArray(variables.date) ? variables.date[0] : variables.date;
+      const date = resolveDate(raw, todayKey(user.timezone));
+      const day = await getDay(user.id, date);
+      return { contents: [{ uri: uri.href, mimeType: "text/markdown", text: dayToMarkdown(day, user.timezone, 1) }] };
+    },
+  );
+
+  server.registerResource(
+    "journal-this-week",
+    "devmemo://week/current",
+    {
+      title: "This week",
+      description: "Your journal for the current week (Monday to Sunday) as Markdown.",
+      mimeType: "text/markdown",
+    },
+    async (uri) => {
+      const { start, end } = weekRange(todayKey(user.timezone));
+      const days = await getRange(user.id, start, end);
+      return {
+        contents: [{ uri: uri.href, mimeType: "text/markdown", text: daysToMarkdown(days, user.timezone, `Week ${start} → ${end}`) }],
+      };
+    },
+  );
 }

@@ -20,6 +20,7 @@
 | 2 | GitHub commit ingestion (per-user webhooks) | ✅ Implemented |
 | 3 | MCP server + personal access tokens | ✅ Implemented |
 | 4 | AI summaries | ✅ Via MCP (`update_day.summary`), no server-side AI provider needed |
+| 5 | GitHub App, GitLab/Bitbucket, MCP OAuth, reports, repository timelines, export, full-text search | ✅ Implemented |
 
 ## Getting Started
 
@@ -48,6 +49,27 @@ npm run dev
 
 Open http://localhost:3000 and sign in with GitHub.
 
+### GitHub App (recommended)
+
+With the GitHub App, users connect repositories with one click, like on Vercel: **Settings → Connect GitHub repositories**, pick repositories, done. The last 90 days of history are imported automatically, and new pushes arrive through the App's single webhook.
+
+Create the App once at https://github.com/settings/apps/new:
+
+| Field | Value |
+|---|---|
+| Homepage URL | `https://your-domain` |
+| Callback URL | `https://your-domain/api/github/app/callback` |
+| Request user authorization (OAuth) during installation | ✅ (DevMemo uses it to verify who owns the installation) |
+| Webhook URL | `https://your-domain/api/webhooks/github-app` |
+| Webhook secret | a random value (`openssl rand -hex 32`) |
+| Repository permissions → Contents | Read-only |
+| Subscribe to events | Push |
+| Where can this GitHub App be installed? | Any account |
+
+Then generate a private key and a client secret, and set the six `GITHUB_APP_*` variables from `.env.example`.
+
+The manual webhook below stays available under **Settings → Advanced** for self-hosters who don't create an App.
+
 ### Connect GitHub activity
 
 1. **Settings → GitHub activity → Set up GitHub webhook.**
@@ -60,20 +82,44 @@ Open http://localhost:3000 and sign in with GitHub.
 
 GitHub must be able to reach the URL. For local development, expose port 3000 with a tunnel (e.g. `cloudflared tunnel --url http://localhost:3000`) and set `BETTER_AUTH_URL` to the tunnel URL.
 
-### Connect Claude (MCP)
+### GitLab and Bitbucket
 
-Create a token in **Settings → AI assistants (MCP)**, then:
+**Settings → GitLab & Bitbucket → Set up webhook**, then add the URL and secret to a project (GitLab: *Settings → Webhooks*, trigger *Push events*; Bitbucket: *Repository settings → Webhooks*, trigger *Repository push*). GitLab authenticates with `X-Gitlab-Token`, Bitbucket signs with `X-Hub-Signature` (HMAC-SHA256).
+
+Commits there are recognized by email, so add the emails you commit with under **Settings → GitHub → Your commit emails**. Note: GitLab includes at most 20 commits per push and Bitbucket only a few per branch, so very large pushes are partially imported.
+
+### Connect an AI assistant (MCP)
+
+DevMemo is an OAuth 2.1 protected MCP server, so any MCP client that supports remote servers can connect by URL alone. Add `https://your-domain/api/mcp` to the client; it discovers DevMemo's authorization server from the `401` challenge, opens the browser for sign-in and consent, and receives a short-lived access token bound to `/api/mcp`.
+
+Settings → **AI assistants (MCP)** has step-by-step guides for Claude (claude.ai / desktop), Claude Code, ChatGPT, Cursor, VS Code, Windsurf, Gemini CLI and Codex CLI, plus a list of connected apps you can disconnect.
+
+For clients without OAuth, create a **personal access token** in the same section and send it as `Authorization: Bearer dm_…` (it also works for the REST API):
 
 ```bash
-# Claude Code
-claude mcp add --scope user --transport http devmemo http://localhost:3000/api/mcp --header "Authorization: Bearer dm_..."
+claude mcp add --scope user --transport http devmemo https://your-domain/api/mcp --header "Authorization: Bearer dm_..."
 ```
 
-Keep the command on one line: the trailing `\` line continuation of bash doesn't work in PowerShell.
-`--scope user` makes DevMemo available in every project. Verify with `claude mcp list`, then ask in plain
-language (e.g. "Add a note to today: fixed the login bug"). MCP tools are not slash commands.
+Keep the command on one line: bash's trailing `\` continuation doesn't work in PowerShell. MCP tools are not slash commands; just ask in plain language (e.g. "Add a note to today: fixed the login bug").
 
-For Claude Desktop, Settings shows a ready-to-paste `claude_desktop_config.json` entry (uses `mcp-remote`).
+<details>
+<summary>OAuth details</summary>
+
+- Discovery: `/.well-known/oauth-protected-resource/api/mcp` (RFC 9728) → `/.well-known/oauth-authorization-server/api/auth` (RFC 8414).
+- Client registration: Client ID Metadata Documents (the current MCP standard) and Dynamic Client Registration (for clients that don't support CIMD yet).
+- Authorization code + PKCE (S256), refresh tokens, consent screen at `/consent`.
+- Access tokens are JWTs signed with keys published at `/api/auth/jwks`, audience-bound to the MCP resource.
+- Built on Better Auth's `@better-auth/mcp` plugin.
+
+</details>
+
+### Features at a glance
+
+- **Calendar & daily journal**: notes timeline, workday flag, Git activity per day, AI summaries.
+- **Reports** (`/reports`): weekly or monthly stats, daily activity chart, activity per repository, copy/download as Markdown.
+- **Repositories** (`/repos`): per-repository timeline with that day's notes as context.
+- **Search** (`/search`): PostgreSQL full-text search with `"exact phrases"`, `OR` and `-exclude`, plus partial-word matching in any language; filter by type, date range and repository.
+- **Export** (Settings → Export, or `GET /api/export?format=md|json|csv&from=&to=`): the whole journal or a date range. CSV is UTF-8 with BOM and neutralizes spreadsheet formulas.
 
 ### Self-hosting with Docker
 
@@ -780,6 +826,16 @@ The AI assistant should retrieve information from DevMemo rather than inventing 
 
 The server also sends instructions telling the assistant to answer only from tool data and never invent activity.
 
+**Prompts** (shown as slash commands or templates in most clients):
+
+| Prompt | Arguments | What it does |
+|---|---|---|
+| `weekly_report` | `week`: `this` (default), `last` or a date | Weekly report: highlights, by project, decisions, open items |
+| `daily_standup` | `date` (default today) | Yesterday / Today / Blockers, using the last working day |
+| `summarize_day` | `date` (default today) | Summarizes a day and saves it with `update_day` |
+
+**Resources**: `devmemo://day/{date}` (one day as Markdown; the last 30 active days are listed) and `devmemo://week/current`.
+
 ## 9.4 MCP Transport
 
 For the MVP, MCP can live inside the Next.js backend.
@@ -944,7 +1000,13 @@ DELETE /api/notes/:id
 ### Search
 
 ```http
-GET /api/journal/search?q=webhook
+GET /api/journal/search?q=webhook&type=note,commit&from=2026-11-01&to=2026-11-30&repository=acme/api
+```
+
+### Export
+
+```http
+GET /api/export?format=md|json|csv&from=YYYY-MM-DD&to=YYYY-MM-DD
 ```
 
 ### Generate Summary

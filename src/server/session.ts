@@ -2,6 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "./auth";
+import { db } from "./db";
 import { env } from "./env";
 
 export type CurrentUser = {
@@ -26,6 +27,15 @@ function toCurrentUser(user: {
     image: user.image ?? null,
     timezone: user.timezone || env().APP_TIMEZONE,
   };
+}
+
+/** Loads a user by id (e.g. the `sub` of an OAuth access token). */
+export async function getCurrentUserById(userId: string): Promise<CurrentUser | null> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, image: true, timezone: true },
+  });
+  return user ? toCurrentUser(user) : null;
 }
 
 /** Current user, or null when signed out. */

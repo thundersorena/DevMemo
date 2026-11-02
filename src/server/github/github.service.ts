@@ -16,7 +16,6 @@ import { extractCommits, pushPayloadSchema, type AuthorIdentity } from "./push";
 export type HookView = {
   id: string;
   url: string;
-  onlyOwnCommits: boolean;
   lastDeliveryAt: string | null;
   lastDeliveryStatus: string | null;
   lastDeliveryMessage: string | null;
@@ -33,7 +32,6 @@ function newSecret(): string {
 
 function toView(hook: {
   id: string;
-  onlyOwnCommits: boolean;
   lastDeliveryAt: Date | null;
   lastDeliveryStatus: string | null;
   lastDeliveryMessage: string | null;
@@ -42,7 +40,6 @@ function toView(hook: {
   return {
     id: hook.id,
     url: webhookUrl(hook.id),
-    onlyOwnCommits: hook.onlyOwnCommits,
     lastDeliveryAt: hook.lastDeliveryAt?.toISOString() ?? null,
     lastDeliveryStatus: hook.lastDeliveryStatus,
     lastDeliveryMessage: hook.lastDeliveryMessage,
@@ -85,11 +82,6 @@ export async function rotateHookSecret(userId: string): Promise<string> {
   return secret;
 }
 
-export async function setOnlyOwnCommits(userId: string, onlyOwnCommits: boolean): Promise<void> {
-  const { count } = await db.gitHubHook.updateMany({ where: { userId }, data: { onlyOwnCommits } });
-  if (count === 0) throw new NotFoundError("Webhook not set up");
-}
-
 /** Removes the endpoint. Already imported commits are kept. */
 export async function deleteHook(userId: string): Promise<void> {
   await db.gitHubHook.deleteMany({ where: { userId } });
@@ -102,7 +94,7 @@ export async function deleteHook(userId: string): Promise<void> {
  * Fetch it once with their OAuth token. Best effort: failures are ignored
  * because email / noreply matching still works.
  */
-async function ensureGitHubLogin(userId: string): Promise<void> {
+export async function ensureGitHubLogin(userId: string): Promise<void> {
   const user = await db.user.findUnique({ where: { id: userId }, select: { githubLogin: true } });
   if (!user || user.githubLogin) return;
 
@@ -131,22 +123,29 @@ async function ensureGitHubLogin(userId: string): Promise<void> {
   }
 }
 
-async function loadIdentity(userId: string) {
+/** Who the user is on GitHub, their timezone, and their import preference. */
+export async function loadIdentity(userId: string) {
   const user = await db.user.findUniqueOrThrow({
     where: { id: userId },
     select: {
       email: true,
       githubLogin: true,
       timezone: true,
+      onlyOwnCommits: true,
+      authorEmails: true,
       accounts: { where: { providerId: "github" }, select: { accountId: true }, take: 1 },
     },
   });
   const identity: AuthorIdentity = {
     githubLogin: user.githubLogin,
     githubId: user.accounts[0]?.accountId ?? null,
-    emails: [user.email],
+    emails: [user.email, ...user.authorEmails],
   };
-  return { identity, timeZone: user.timezone || env().APP_TIMEZONE };
+  return {
+    identity,
+    timeZone: user.timezone || env().APP_TIMEZONE,
+    onlyOwnCommits: user.onlyOwnCommits,
+  };
 }
 
 // ─── Delivery handling ─────────────────────────────────────────────────────
@@ -179,7 +178,7 @@ export async function handleDelivery(input: {
 }): Promise<DeliveryOutcome> {
   const hook = await db.gitHubHook.findUnique({
     where: { id: input.hookId },
-    select: { id: true, userId: true, secretEncrypted: true, onlyOwnCommits: true },
+    select: { id: true, userId: true, secretEncrypted: true },
   });
   if (!hook) return { status: 404, body: { ok: false, message: "Unknown webhook" } };
 
@@ -221,12 +220,8 @@ export async function handleDelivery(input: {
     return { status: 400, body: { ok: false, message: "Invalid push payload" } };
   }
 
-  const { identity, timeZone } = await loadIdentity(hook.userId);
-  const extracted = extractCommits(parsed.data, {
-    timeZone,
-    identity,
-    onlyOwnCommits: hook.onlyOwnCommits,
-  });
+  const { identity, timeZone, onlyOwnCommits } = await loadIdentity(hook.userId);
+  const extracted = extractCommits(parsed.data, { timeZone, identity, onlyOwnCommits });
 
   if (extracted.kind === "ignored") {
     await recordDelivery(hook.id, "ignored", extracted.reason);

@@ -6,7 +6,6 @@ import {
   deleteHookAction,
   revealHookSecretAction,
   rotateHookSecretAction,
-  setOnlyOwnCommitsAction,
 } from "@/app/(dashboard)/actions";
 import { Button } from "@/components/ui/button";
 import type { HookView } from "@/server/github/github.service";
@@ -92,25 +91,6 @@ export function GitHubIntegration({ hook, timeZone }: { hook: HookView | null; t
           {" "}<code className="font-mono">BETTER_AUTH_URL</code> to the tunnel address.
         </p>
       </details>
-
-      <label className="flex items-start gap-3 text-sm">
-        <input
-          type="checkbox"
-          className="mt-0.5 size-4 accent-[var(--accent)]"
-          defaultChecked={hook.onlyOwnCommits}
-          disabled={pending}
-          onChange={(e) => {
-            const value = e.currentTarget.checked;
-            run(() => setOnlyOwnCommitsAction(value));
-          }}
-        />
-        <span>
-          <span className="font-medium">Only import my commits</span>
-          <span className="block text-muted">
-            Skip commits by other people in shared repositories. Matched by your GitHub username and email.
-          </span>
-        </span>
-      </label>
 
       <div className="flex flex-wrap gap-2 border-t border-border pt-4">
         <Button

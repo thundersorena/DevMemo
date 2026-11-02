@@ -1,6 +1,7 @@
 import "server-only";
 import { NoteSource, Prisma } from "@/generated/prisma/client";
 import { dateKeyToDb, dbToDateKey, monthRange, type DateKey, type MonthKey } from "@/lib/dates";
+import type { CommitInput } from "./github/push";
 import type { UpdateDayInput } from "@/lib/validation";
 import { db } from "./db";
 import { NotFoundError } from "./errors";
@@ -133,6 +134,30 @@ export async function getDay(userId: string, date: DateKey): Promise<DayView> {
     notes: day.notes.map(toNoteView),
     commits: day.commits.map(toCommitView),
   };
+}
+
+/** Full days (notes + commits) for an inclusive date range. Only days with content. */
+export async function getRange(userId: string, from: DateKey, to: DateKey): Promise<DayView[]> {
+  const days = await db.day.findMany({
+    where: { userId, date: { gte: dateKeyToDb(from), lte: dateKeyToDb(to) } },
+    select: {
+      date: true,
+      isWorkDay: true,
+      summary: true,
+      notes: { select: noteSelect, orderBy: { createdAt: "asc" } },
+      commits: { select: commitSelect, orderBy: { committedAt: "asc" } },
+    },
+    orderBy: { date: "asc" },
+  });
+  return days
+    .map((day) => ({
+      date: dbToDateKey(day.date),
+      isWorkDay: day.isWorkDay,
+      summary: day.summary,
+      notes: day.notes.map(toNoteView),
+      commits: day.commits.map(toCommitView),
+    }))
+    .filter((d) => d.isWorkDay || d.summary || d.notes.length > 0 || d.commits.length > 0);
 }
 
 export async function getMonth(userId: string, month: MonthKey): Promise<MonthView> {
@@ -307,4 +332,50 @@ export async function updateNote(
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
   const { count } = await db.note.deleteMany({ where: { id: noteId, userId } });
   if (count === 0) throw new NotFoundError("Note not found");
+}
+
+/**
+ * Stores imported commits on the right days. Idempotent: commits already
+ * stored for this user (same SHA) are skipped, so retried webhook
+ * deliveries never create duplicates. Never touches notes.
+ */
+export async function importCommits(
+  userId: string,
+  commits: CommitInput[],
+): Promise<{ imported: number; duplicates: number }> {
+  if (commits.length === 0) return { imported: 0, duplicates: 0 };
+
+  const byDate = new Map<DateKey, CommitInput[]>();
+  for (const commit of commits) {
+    const list = byDate.get(commit.date) ?? [];
+    list.push(commit);
+    byDate.set(commit.date, list);
+  }
+
+  const imported = await db.$transaction(async (tx) => {
+    let count = 0;
+    for (const [date, list] of byDate) {
+      const day = await ensureDay(userId, date, tx);
+      const result = await tx.commit.createMany({
+        data: list.map((c) => ({
+          userId,
+          dayId: day.id,
+          sha: c.sha,
+          repositoryId: c.repositoryId,
+          repositoryName: c.repositoryName,
+          message: c.message,
+          branch: c.branch,
+          url: c.url,
+          authorName: c.authorName,
+          authorEmail: c.authorEmail,
+          committedAt: c.committedAt,
+        })),
+        skipDuplicates: true,
+      });
+      count += result.count;
+    }
+    return count;
+  });
+
+  return { imported, duplicates: commits.length - imported };
 }

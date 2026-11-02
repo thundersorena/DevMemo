@@ -6,6 +6,14 @@ import { z } from "zod";
 import { addNote, deleteNote, updateDay, updateNote } from "@/server/journal.service";
 import { requireUser } from "@/server/session";
 import { updateUserTimezone } from "@/server/user.service";
+import {
+  createHook,
+  deleteHook,
+  revealHookSecret,
+  rotateHookSecret,
+  setOnlyOwnCommits,
+} from "@/server/github/github.service";
+import { createToken, revokeToken } from "@/server/api-token.service";
 import { AppError } from "@/server/errors";
 import {
   dateKeySchema,
@@ -14,10 +22,11 @@ import {
 } from "@/lib/validation";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+export type SecretResult = { ok: true; secret: string } | { ok: false; error: string };
 
 const noteIdSchema = z.string().min(1).max(64);
 
-function failure(error: unknown): ActionResult {
+function failure(error: unknown): { ok: false; error: string } {
   // Let redirect() (e.g. from requireUser when signed out) propagate.
   unstable_rethrow(error);
   if (error instanceof z.ZodError) {
@@ -99,6 +108,91 @@ export async function updateSettingsAction(
     const { timezone } = updateSettingsSchema.parse({ timezone: formData.get("timezone") });
     await updateUserTimezone(user.id, timezone);
     revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ─── GitHub webhook ─────────────────────────────────────────────────────────
+
+export async function createHookAction(): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    await createHook(user.id);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function revealHookSecretAction(): Promise<SecretResult> {
+  try {
+    const user = await requireUser();
+    return { ok: true, secret: await revealHookSecret(user.id) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function rotateHookSecretAction(): Promise<SecretResult> {
+  try {
+    const user = await requireUser();
+    const secret = await rotateHookSecret(user.id);
+    revalidatePath("/settings");
+    return { ok: true, secret };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function setOnlyOwnCommitsAction(value: boolean): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    await setOnlyOwnCommits(user.id, z.boolean().parse(value));
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function deleteHookAction(): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    await deleteHook(user.id);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ─── API / MCP tokens ───────────────────────────────────────────────────────
+
+const tokenNameSchema = z.string().trim().min(1, "Give the token a name").max(60);
+
+export async function createTokenAction(
+  _prev: SecretResult | null,
+  formData: FormData,
+): Promise<SecretResult> {
+  try {
+    const user = await requireUser();
+    const name = tokenNameSchema.parse(formData.get("name"));
+    const { token } = await createToken(user.id, name);
+    revalidatePath("/settings");
+    return { ok: true, secret: token };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function revokeTokenAction(tokenId: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    await revokeToken(user.id, z.string().min(1).max(64).parse(tokenId));
+    revalidatePath("/settings");
     return { ok: true };
   } catch (error) {
     return failure(error);

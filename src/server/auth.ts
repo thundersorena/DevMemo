@@ -21,11 +21,15 @@ export const auth = betterAuth({
       clientId: config.GITHUB_CLIENT_ID,
       clientSecret: config.GITHUB_CLIENT_SECRET,
       scope: ["read:user", "user:email"],
+      // Keep name, avatar and username in sync with GitHub on every sign-in.
+      overrideUserInfoOnSignIn: true,
+      mapProfileToUser: (profile) => ({ githubLogin: profile.login }),
     },
   },
   user: {
     additionalFields: {
       timezone: { type: "string", required: false, input: false },
+      githubLogin: { type: "string", required: false, input: false },
     },
   },
   session: {

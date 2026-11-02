@@ -10,9 +10,9 @@
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Core journal: GitHub sign-in, calendar, daily notes, workdays, search, REST API | ✅ Implemented |
-| 2 | GitHub commit ingestion | Planned |
-| 3 | MCP server | Planned |
-| 4 | AI summaries | Planned |
+| 2 | GitHub commit ingestion (per-user webhooks) | ✅ Implemented |
+| 3 | MCP server + personal access tokens | ✅ Implemented |
+| 4 | AI summaries | ✅ Via MCP (`update_day.summary`), no server-side AI provider needed |
 
 ## Getting Started
 
@@ -41,6 +41,30 @@ npm run dev
 
 Open http://localhost:3000 and sign in with GitHub.
 
+### Connect GitHub activity
+
+1. **Settings → GitHub activity → Set up GitHub webhook.**
+2. On GitHub, open a repository (or organization) → **Settings → Webhooks → Add webhook**:
+   - Payload URL: the URL shown in Settings
+   - Content type: `application/json`
+   - Secret: the secret shown in Settings (same for every repository)
+   - Events: **Just the push event**
+3. GitHub sends a `ping`, and the status in Settings turns green.
+
+GitHub must be able to reach the URL. For local development, expose port 3000 with a tunnel (e.g. `cloudflared tunnel --url http://localhost:3000`) and set `BETTER_AUTH_URL` to the tunnel URL.
+
+### Connect Claude (MCP)
+
+Create a token in **Settings → AI assistants (MCP)**, then:
+
+```bash
+# Claude Code
+claude mcp add --transport http devmemo http://localhost:3000/api/mcp \
+  --header "Authorization: Bearer dm_..."
+```
+
+For Claude Desktop, Settings shows a ready-to-paste `claude_desktop_config.json` entry (uses `mcp-remote`).
+
 ### Self-hosting with Docker
 
 ```bash
@@ -58,6 +82,7 @@ This starts Postgres, applies migrations, and runs the app on port 3000.
 | `npm run build` / `npm start` | Production build and server |
 | `npm run typecheck` | Generate route types and run `tsc` |
 | `npm run lint` | ESLint |
+| `npm test` | Unit tests (Vitest) |
 | `npm run db:migrate` | Create/apply a migration in development |
 | `npm run db:deploy` | Apply migrations in production |
 | `npm run db:studio` | Browse the database |
@@ -481,6 +506,14 @@ Save Commit Records
 PostgreSQL Database
 ```
 
+## 8.1.1 Implementation
+
+- Each user has one webhook endpoint: `POST /api/webhooks/github/:hookId`, with its own secret (AES-256-GCM encrypted at rest).
+- The same URL and secret can be added to any number of repositories or organizations.
+- **Only my commits** (default on) skips commits by other authors in shared repositories, matched by GitHub username, account email and GitHub noreply addresses.
+- `ping` is acknowledged, `push` is ingested, other events are ignored (202). Branch deletions and tag pushes are ignored.
+- The last delivery's status is shown in Settings, which helps debug signature or content-type problems.
+
 ## 8.2 Webhook Event
 
 Initially, subscribe only to:
@@ -722,6 +755,21 @@ The developer should be able to ask:
 
 The AI assistant should retrieve information from DevMemo rather than inventing historical activity.
 
+## 9.3.1 Implemented Tools
+
+| Tool | Purpose |
+|---|---|
+| `get_today` | Today's date, yesterday and current week in the user's timezone |
+| `get_day` | One full day: workday, notes (with source), commits, summary |
+| `get_range` | Full days in a date range (max 62 days), for weekly summaries |
+| `get_month` | Per-day counts for a month |
+| `get_commits` | Commits for a date, optional repository filter |
+| `search_journal` | Text search across notes, commits, repositories, summaries |
+| `add_note` | Append a note (stored with source `MCP`, shown as "via AI") |
+| `update_day` | Set workday flag and/or save a summary |
+
+The server also sends instructions telling the assistant to answer only from tool data and never invent activity.
+
 ## 9.4 MCP Transport
 
 For the MVP, MCP can live inside the Next.js backend.
@@ -737,7 +785,12 @@ The actual transport should be selected based on the compatibility requirements 
 
 Claude Desktop and Claude Code integration should be tested before finalizing the transport.
 
+**Implemented:** Streamable HTTP at `POST /api/mcp`, stateless (a fresh server per request, bound to the token's user), JSON responses.
+
 ## 9.5 MCP Security
+
+**Implemented:** personal access tokens (`dm_…`), created and revoked in Settings. Only a SHA-256 hash is stored, and the token is shown once. The same tokens authenticate the REST API via `Authorization: Bearer`.
+
 
 Read and write tools must validate their input.
 
@@ -935,11 +988,16 @@ DevMemo/
 │   │   └── api/
 │   │       ├── auth/[...all]/  # Better Auth
 │   │       ├── journal/        # REST API
-│   │       └── notes/[id]/
+│   │       ├── notes/[id]/
+│   │       ├── mcp/            # MCP endpoint (Streamable HTTP)
+│   │       └── webhooks/github/[hookId]/
 │   ├── components/             # calendar, journal, layout, ui
 │   ├── lib/                    # dates, validation (client-safe)
 │   ├── server/                 # server-only: db, auth, session, services
 │   │   ├── journal.service.ts  # Single source of journal business logic
+│   │   ├── api-token.service.ts
+│   │   ├── github/             # push parsing (pure, tested) + webhook service
+│   │   ├── mcp/server.ts       # MCP tools → journal service
 │   │   └── ...
 │   └── proxy.ts                # Optimistic auth redirect
 ├── docker-compose.yml

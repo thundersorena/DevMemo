@@ -2,6 +2,7 @@ import "server-only";
 import { unstable_rethrow } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
 import { ZodError, type ZodType } from "zod";
+import { authenticateToken, bearerToken } from "./api-token.service";
 import { auth } from "./auth";
 import { env } from "./env";
 import { AppError, BadRequestError, UnauthorizedError } from "./errors";
@@ -40,7 +41,15 @@ export function handleError(error: unknown) {
   return errorResponse(500, "INTERNAL_ERROR", "Something went wrong");
 }
 
+/** Session cookie (browser) or `Authorization: Bearer dm_…` (API clients). */
 async function userFromRequest(req: NextRequest): Promise<CurrentUser> {
+  const token = bearerToken(req.headers);
+  if (token) {
+    const user = await authenticateToken(token);
+    if (!user) throw new UnauthorizedError("Invalid or revoked token");
+    return user;
+  }
+
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) throw new UnauthorizedError();
   const { user } = session;

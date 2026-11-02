@@ -10,7 +10,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── Auth ────────────────────────────────────────────────────────────────────
 
 model User {
   id            String   @id
@@ -19,14 +18,17 @@ model User {
   emailVerified Boolean  @default(false)
   image         String?
   timezone      String?
+  githubLogin   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   sessions Session[]
   accounts Account[]
-  days     Day[]
-  notes    Note[]
-  commits  Commit[]
+  days       Day[]
+  notes      Note[]
+  commits    Commit[]
+  githubHook GitHubHook?
+  apiTokens  ApiToken[]
 
   @@map("user")
 }
@@ -78,15 +80,10 @@ model Verification {
   @@map("verification")
 }
 
-// ─── Journal ─────────────────────────────────────────────────────────────────
-
-/// One record per user per calendar date. Created lazily the first time a
-/// date gets a note, a workday flag, a summary, or a commit.
 model Day {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// Calendar date in the user's timezone (no time component).
   date      DateTime @db.Date
   isWorkDay Boolean  @default(false)
   summary   String?
@@ -107,8 +104,6 @@ enum NoteSource {
   TELEGRAM
 }
 
-/// Notes are separate rows so that UI edits and AI/MCP appends never
-/// overwrite each other, and so every note keeps its origin.
 model Note {
   id        String     @id @default(cuid())
   userId    String
@@ -125,7 +120,6 @@ model Note {
   @@map("note")
 }
 
-/// Git commit metadata imported from a provider (GitHub first).
 model Commit {
   id             String   @id @default(cuid())
   userId         String
@@ -149,4 +143,36 @@ model Commit {
   @@index([dayId])
   @@index([userId, repositoryName])
   @@map("commit")
+}
+
+/// Per-user GitHub webhook endpoint: /api/webhooks/github/{id}.
+model GitHubHook {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// AES-256-GCM encrypted with a key derived from BETTER_AUTH_SECRET.
+  secretEncrypted     String
+  onlyOwnCommits      Boolean   @default(true)
+  lastDeliveryAt      DateTime?
+  lastDeliveryStatus  String?
+  lastDeliveryMessage String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@map("github_hook")
+}
+
+/// Personal access token for the REST API and MCP. Only the SHA-256 hash is stored.
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String    @unique
+  prefix     String
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("api_token")
 }

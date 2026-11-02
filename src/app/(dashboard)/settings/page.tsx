@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { SettingsForm } from "@/components/settings-form";
+import { GitHubIntegration } from "@/components/settings/github-integration";
+import { McpTokens } from "@/components/settings/mcp-tokens";
+import { SettingsForm } from "@/components/settings/timezone-form";
+import { listTokens } from "@/server/api-token.service";
+import { env } from "@/server/env";
+import { getHook } from "@/server/github/github.service";
 import { requireUser } from "@/server/session";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -13,24 +18,21 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 
       <Card title="Preferences">
-        <Suspense fallback={<div className="h-24 animate-pulse rounded-lg bg-surface-muted" />}>
+        <Suspense fallback={<Skeleton />}>
           <Preferences />
         </Suspense>
       </Card>
 
-      <Card title="Integrations">
-        <ul className="divide-y divide-border">
-          <Integration
-            name="GitHub activity"
-            description="Import commits automatically when you push."
-            status="Coming in phase 2"
-          />
-          <Integration
-            name="MCP (Claude and other AI assistants)"
-            description="Let your AI assistant read and update your journal."
-            status="Coming in phase 3"
-          />
-        </ul>
+      <Card id="github" title="GitHub activity">
+        <Suspense fallback={<Skeleton />}>
+          <GitHubSection />
+        </Suspense>
+      </Card>
+
+      <Card id="mcp" title="AI assistants (MCP)">
+        <Suspense fallback={<Skeleton />}>
+          <McpSection />
+        </Suspense>
       </Card>
     </div>
   );
@@ -42,23 +44,28 @@ async function Preferences() {
   return <SettingsForm timezone={user.timezone} timezones={timezones} />;
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+async function GitHubSection() {
+  const user = await requireUser();
+  const hook = await getHook(user.id);
+  return <GitHubIntegration hook={hook} timeZone={user.timezone} />;
+}
+
+async function McpSection() {
+  const user = await requireUser();
+  const tokens = await listTokens(user.id);
+  const mcpUrl = new URL("/api/mcp", env().BETTER_AUTH_URL).toString();
+  return <McpTokens tokens={tokens} mcpUrl={mcpUrl} timeZone={user.timezone} />;
+}
+
+function Card({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-border bg-surface p-5">
+    <section id={id} className="scroll-mt-20 rounded-xl border border-border bg-surface p-5 sm:p-6">
       <h2 className="mb-4 text-sm font-semibold tracking-wide text-muted uppercase">{title}</h2>
       {children}
     </section>
   );
 }
 
-function Integration({ name, description, status }: { name: string; description: string; status: string }) {
-  return (
-    <li className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-      <div>
-        <p className="text-sm font-medium">{name}</p>
-        <p className="text-sm text-muted">{description}</p>
-      </div>
-      <span className="shrink-0 rounded-full bg-surface-muted px-2.5 py-1 text-xs text-muted">{status}</span>
-    </li>
-  );
+function Skeleton() {
+  return <div className="h-24 animate-pulse rounded-lg bg-surface-muted" />;
 }

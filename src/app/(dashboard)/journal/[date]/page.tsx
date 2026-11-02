@@ -100,7 +100,7 @@ async function JournalContent({ params }: Pick<PageProps<"/journal/[date]">, "pa
             <GitCommitIcon className="size-5 shrink-0" />
             <span>
               No commits on this day.{" "}
-              <Link href="/settings" className="underline underline-offset-2 hover:text-foreground">
+              <Link href="/settings#github" className="underline underline-offset-2 hover:text-foreground">
                 Connect GitHub
               </Link>{" "}
               to import activity automatically.

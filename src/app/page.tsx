@@ -67,7 +67,7 @@ export default function LandingPage() {
 
       <main className="flex-1 overflow-x-clip">
         {/* ─── Hero ─────────────────────────────────────────────── */}
-        <section className="mx-auto grid max-w-6xl items-center gap-14 px-4 pt-16 pb-20 sm:px-6 sm:pt-24 lg:grid-cols-[1.05fr_1fr] lg:gap-12 [&>*]:min-w-0">
+        <section className="mx-auto grid max-w-6xl items-center gap-14 px-4 pt-16 pb-20 sm:px-6 sm:pt-24 lg:grid-cols-[1.05fr_1fr] lg:gap-12 *:min-w-0">
           <div>
             <a
               href={REPO_URL}
@@ -88,7 +88,7 @@ export default function LandingPage() {
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Link href="/login" className={buttonClass("primary", "", "lg")}>
-                <GitHubIcon className="size-[18px]" />
+                <GitHubIcon className="size-4.5" />
                 Start with GitHub
               </Link>
               <a href="#how-it-works" className={buttonClass("secondary", "", "lg")}>
@@ -150,7 +150,7 @@ export default function LandingPage() {
         </section>
 
         {/* ─── MCP ──────────────────────────────────────────────── */}
-        <section id="mcp" className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2 [&>*]:min-w-0">
+        <section id="mcp" className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2 *:min-w-0">
           <div>
             <p className="text-sm font-medium text-accent">Model Context Protocol</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
@@ -216,7 +216,7 @@ export default function LandingPage() {
           <p className="mt-4 text-lg text-muted">Sign in with GitHub and write your first note in under a minute.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link href="/login" className={buttonClass("primary", "", "lg")}>
-              <GitHubIcon className="size-[18px]" />
+              <GitHubIcon className="size-4.5" />
               Start with GitHub
             </Link>
             <a href={REPO_URL} target="_blank" rel="noreferrer" className={buttonClass("secondary", "", "lg")}>

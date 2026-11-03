@@ -4,11 +4,6 @@ import { useState, useTransition } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
-/**
- * Approve / deny an OAuth authorization. The oauthProviderClient plugin
- * attaches the signed request from the page URL, so the server knows which
- * authorization this decision is for.
- */
 export function ConsentButtons() {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

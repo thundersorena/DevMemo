@@ -1,6 +1,3 @@
-/**
- * A static, decorative preview of a journal day. Pure markup, no data.
- */
 const commits = [
   ["a3f91c2", "Verify webhook HMAC with raw body", "10:42"],
   ["7be0d14", "Make commit ingestion idempotent", "11:18"],

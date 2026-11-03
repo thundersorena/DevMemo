@@ -66,7 +66,6 @@ export default function LandingPage() {
       <LandingHeader />
 
       <main className="flex-1 overflow-x-clip">
-        {/* ─── Hero ─────────────────────────────────────────────── */}
         <section className="mx-auto grid max-w-6xl items-center gap-14 px-4 pt-16 pb-20 sm:px-6 sm:pt-24 lg:grid-cols-[1.05fr_1fr] lg:gap-12 *:min-w-0">
           <div>
             <a
@@ -100,7 +99,6 @@ export default function LandingPage() {
           <JournalPreview />
         </section>
 
-        {/* ─── Problem ──────────────────────────────────────────── */}
         <section className="border-y border-border bg-surface">
           <div className="mx-auto max-w-3xl px-4 py-20 text-center sm:px-6">
             <p className="text-sm font-medium text-accent">The missing context</p>
@@ -115,7 +113,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ─── Three sources ────────────────────────────────────── */}
         <section className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
           <div className="mb-12 max-w-2xl">
             <h2 className="text-3xl font-semibold tracking-tight">Three sources, one timeline</h2>
@@ -132,7 +129,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ─── How it works ─────────────────────────────────────── */}
         <section id="how-it-works" className="scroll-mt-20 border-y border-border bg-surface">
           <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
             <h2 className="mb-12 text-3xl font-semibold tracking-tight">How it works</h2>
@@ -149,7 +145,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ─── MCP ──────────────────────────────────────────────── */}
         <section id="mcp" className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2 *:min-w-0">
           <div>
             <p className="text-sm font-medium text-accent">Model Context Protocol</p>
@@ -172,7 +167,6 @@ export default function LandingPage() {
           <McpPreview />
         </section>
 
-        {/* ─── Principles ───────────────────────────────────────── */}
         <section id="principles" className="scroll-mt-20 border-y border-border bg-surface">
           <div className="mx-auto grid max-w-6xl gap-12 px-4 py-24 sm:px-6 md:grid-cols-2">
             <div>
@@ -210,7 +204,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ─── CTA ──────────────────────────────────────────────── */}
         <section className="mx-auto max-w-3xl px-4 py-24 text-center sm:px-6">
           <h2 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">Start remembering your work.</h2>
           <p className="mt-4 text-lg text-muted">Sign in with GitHub and write your first note in under a minute.</p>

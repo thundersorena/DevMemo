@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { isValidDateKey, isValidTimeZone } from "./dates";
 
-/**
- * Shared input schemas. The same schemas are used by REST route handlers,
- * server actions, and (in phase 3) MCP tools, so every entry point validates
- * the same way.
- */
-
 export const NOTE_MAX_LENGTH = 20_000;
 export const SUMMARY_MAX_LENGTH = 20_000;
 

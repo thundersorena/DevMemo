@@ -11,13 +11,8 @@ import { env } from "./env";
 
 const config = env();
 
-/** The MCP endpoint is the OAuth protected resource; tokens are bound to it. */
 export const MCP_RESOURCE = new URL("/api/mcp", config.BETTER_AUTH_URL).toString();
 
-/**
- * Better Auth with GitHub as the only sign-in method.
- * No passwords, no email verification, no reset flow.
- */
 export const auth = betterAuth({
   baseURL: config.BETTER_AUTH_URL,
   secret: config.BETTER_AUTH_SECRET,
@@ -27,8 +22,6 @@ export const auth = betterAuth({
     github: {
       clientId: config.GITHUB_CLIENT_ID,
       clientSecret: config.GITHUB_CLIENT_SECRET,
-      // Better Auth already requests read:user and user:email for GitHub.
-      // Keep name, avatar and username in sync with GitHub on every sign-in.
       overrideUserInfoOnSignIn: true,
       mapProfileToUser: (profile) => ({ githubLogin: profile.login }),
     },
@@ -45,21 +38,16 @@ export const auth = betterAuth({
     cookieCache: { enabled: true, maxAge: 5 * 60 },
   },
   advanced: {
-    // Secure (__Secure-) cookies whenever the app is served over HTTPS.
     useSecureCookies: config.BETTER_AUTH_URL.startsWith("https://"),
   },
   plugins: [
-    // Signing keys + /jwks for MCP access tokens.
     jwt(),
-    // OAuth 2.1 authorization server for MCP clients (Claude, ChatGPT, Cursor…).
     mcp({
       loginPage: "/login",
       consentPage: "/consent",
       resource: MCP_RESOURCE,
       scopes: ["openid", "profile", "email", "offline_access"],
-      // CIMD (below) is the current MCP standard. Dynamic Client Registration
-      // is kept for clients that don't support CIMD yet (e.g. Cursor, older
-      // Claude Code). "infer" accepts their native/localhost redirect URIs.
+      // DCR for clients without CIMD support; "infer" allows localhost redirect URIs.
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
       clientRegistrationDefaultApplicationType: "infer",

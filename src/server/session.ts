@@ -29,7 +29,6 @@ function toCurrentUser(user: {
   };
 }
 
-/** Loads a user by id (e.g. the `sub` of an OAuth access token). */
 export async function getCurrentUserById(userId: string): Promise<CurrentUser | null> {
   const user = await db.user.findUnique({
     where: { id: userId },
@@ -38,7 +37,6 @@ export async function getCurrentUserById(userId: string): Promise<CurrentUser | 
   return user ? toCurrentUser(user) : null;
 }
 
-/** Current user, or null when signed out. */
 export async function getOptionalUser(): Promise<CurrentUser | null> {
   const session = await auth.api.getSession({ headers: await headers() });
   return session ? toCurrentUser(session.user) : null;

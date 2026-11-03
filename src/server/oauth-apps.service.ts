@@ -2,8 +2,6 @@ import "server-only";
 import { db } from "./db";
 import { NotFoundError } from "./errors";
 
-/** OAuth (MCP) clients the user has authorized. */
-
 export type ConnectedAppView = {
   clientId: string;
   name: string;
@@ -67,7 +65,6 @@ export async function revokeConnectedApp(userId: string, clientId: string): Prom
   if (consents.count === 0) throw new NotFoundError("App not found");
 }
 
-/** Display name of a registered OAuth client (for the sign-in page). */
 export async function getClientName(clientId: string): Promise<string | null> {
   const client = await db.oauthClient.findUnique({
     where: { clientId },

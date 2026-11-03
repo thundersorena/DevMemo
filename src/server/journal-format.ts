@@ -1,11 +1,6 @@
 import { formatLongDate, formatTime } from "@/lib/dates";
 import type { DayView } from "./journal.service";
 
-/**
- * Markdown rendering of journal days. Used for MCP prompts/resources (compact,
- * readable context for models) and for Markdown export.
- */
-
 const SOURCE_TAG: Record<string, string> = { MCP: " _(via AI)_", TELEGRAM: " _(via Telegram)_" };
 
 function quote(text: string): string {
@@ -58,8 +53,6 @@ export function daysToMarkdown(days: DayView[], timeZone: string, title?: string
   return parts.join("\n").trimEnd() + "\n";
 }
 
-// ─── CSV ───────────────────────────────────────────────────────────────────
-
 function csvCell(value: string | null | undefined): string {
   const v = value ?? "";
   // Neutralize spreadsheet formula injection, then quote.
@@ -69,7 +62,6 @@ function csvCell(value: string | null | undefined): string {
 
 export const CSV_HEADER = ["date", "type", "time", "source", "repository", "sha", "branch", "text", "url"];
 
-/** One row per note, commit and summary. Times are in `timeZone`. */
 export function daysToCsv(days: DayView[], timeZone: string): string {
   const rows: string[][] = [CSV_HEADER];
   for (const day of days) {

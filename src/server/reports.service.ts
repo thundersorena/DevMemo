@@ -20,13 +20,11 @@ export type ReportView = {
     commits: number;
     repositories: number;
   };
-  /** One entry per calendar day in the period, including empty days. */
   daily: { date: DateKey; commits: number; notes: number; isWorkDay: boolean }[];
   repositories: RepoActivity[];
   days: DayView[];
 };
 
-/** Activity report for an inclusive date range (a week or a month). */
 export async function getReport(userId: string, start: DateKey, end: DateKey): Promise<ReportView> {
   const days = await getRange(userId, start, end);
   const byDate = new Map(days.map((d) => [d.date, d]));

@@ -33,7 +33,6 @@ export type SearchOptions = {
   types?: SearchType[];
   from?: DateKey;
   to?: DateKey;
-  /** Only commits from this repository (exact name). */
   repository?: string;
 };
 

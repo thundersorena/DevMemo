@@ -8,11 +8,6 @@ import { env } from "./env";
 import { AppError, BadRequestError, UnauthorizedError } from "./errors";
 import type { CurrentUser } from "./session";
 
-/**
- * Helpers for REST route handlers.
- * Success: `{ data: ... }` · Error: `{ error: { code, message, details? } }`
- */
-
 export function ok<T>(data: T, init?: ResponseInit) {
   return NextResponse.json({ data }, init);
 }
@@ -64,7 +59,6 @@ async function userFromRequest(req: NextRequest): Promise<CurrentUser> {
 
 type Handler<Ctx> = (args: { req: NextRequest; ctx: Ctx; user: CurrentUser }) => Promise<Response>;
 
-/** Wraps a route handler with session auth and uniform error handling. */
 export function withUser<Ctx>(handler: Handler<Ctx>) {
   return async (req: NextRequest, ctx: Ctx): Promise<Response> => {
     try {

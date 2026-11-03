@@ -31,7 +31,6 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
   );
 }
 
-/** When an MCP client sent the user here, say which one. */
 async function OAuthContext({ searchParams }: Pick<PageProps<"/login">, "searchParams">) {
   const params = await searchParams;
   const clientId = typeof params.client_id === "string" ? params.client_id : null;

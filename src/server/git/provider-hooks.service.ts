@@ -15,8 +15,6 @@ import {
   type Provider,
 } from "./providers";
 
-/** Manual webhooks for GitLab and Bitbucket. Same shape as the GitHub one. */
-
 export type ProviderHookView = {
   provider: Provider;
   url: string;
@@ -72,8 +70,6 @@ export async function rotateProviderSecret(userId: string, provider: Provider): 
 export async function deleteProviderHook(userId: string, provider: Provider): Promise<void> {
   await db.providerHook.deleteMany({ where: { userId, provider } });
 }
-
-// ─── Delivery ──────────────────────────────────────────────────────────────
 
 async function record(id: string, status: "ok" | "ignored" | "error", message: string) {
   await db.providerHook.update({

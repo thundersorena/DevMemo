@@ -1,4 +1,3 @@
-/** Decorative example of an AI assistant answering from the journal via MCP. */
 export function McpPreview() {
   return (
     <figure

@@ -57,7 +57,6 @@ function toolError(error: unknown): CallToolResult {
   return { isError: true, content: [{ type: "text", text: message }] };
 }
 
-/** Wraps a tool handler with uniform error reporting. */
 function safe<A>(handler: (args: A) => Promise<CallToolResult>) {
   return async (args: A): Promise<CallToolResult> => {
     try {
@@ -70,10 +69,6 @@ function safe<A>(handler: (args: A) => Promise<CallToolResult>) {
 
 const date = dateKeySchema.describe("Date in YYYY-MM-DD format");
 
-/**
- * Builds an MCP server bound to one authenticated user. Every tool calls the
- * same journal service as the REST API and the web UI.
- */
 export function createMcpServer(user: CurrentUser): McpServer {
   const server = new McpServer(
     { name: "devmemo", title: "DevMemo", version: "0.2.0" },
@@ -238,8 +233,6 @@ export function createMcpServer(user: CurrentUser): McpServer {
   return server;
 }
 
-// ─── Prompts ───────────────────────────────────────────────────────────────
-
 const GROUNDING = `Use only the journal data above. Don't invent work, decisions or outcomes. Notes describe what happened; commits describe what changed. An investigation is not a finished task unless the data says so. If the data is thin, say so briefly instead of padding.`;
 
 function resolveDate(input: string | undefined, today: DateKey): DateKey {
@@ -336,15 +329,12 @@ ${GROUNDING}`);
   );
 }
 
-// ─── Resources ─────────────────────────────────────────────────────────────
-
 const RECENT_DAYS = 30;
 
 function registerResources(server: McpServer, user: CurrentUser) {
   server.registerResource(
     "journal-day",
     new ResourceTemplate("devmemo://day/{date}", {
-      // Recent days with activity, newest first.
       list: async () => {
         const today = todayKey(user.timezone);
         const days = await getRange(user.id, addDays(today, -(RECENT_DAYS - 1)), today);

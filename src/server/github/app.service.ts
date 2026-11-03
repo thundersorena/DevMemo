@@ -32,8 +32,6 @@ export const BACKFILL_DAYS = 90;
 const BACKFILL_MAX_PAGES = 10; // 100 commits per page → at most 1000 per repo
 const MAX_REPOS_PER_INSTALLATION = 500;
 
-// ─── Views ─────────────────────────────────────────────────────────────────
-
 export type InstallationView = {
   id: string;
   installationId: string;
@@ -86,8 +84,6 @@ export async function listInstallations(userId: string): Promise<InstallationVie
     })),
   }));
 }
-
-// ─── Linking ───────────────────────────────────────────────────────────────
 
 /**
  * Links every installation the user can access. Returns the ids of
@@ -194,7 +190,6 @@ export async function unlinkInstallation(userId: string, id: string): Promise<vo
   if (count === 0) throw new NotFoundError("Installation not found");
 }
 
-/** Marks every repository of the user for a fresh history import. */
 export async function requestReimport(userId: string): Promise<string[]> {
   const repos = await db.gitHubRepository.findMany({
     where: { installation: { userId, suspendedAt: null } },
@@ -207,8 +202,6 @@ export async function requestReimport(userId: string): Promise<string[]> {
   });
   return ids;
 }
-
-// ─── History import ────────────────────────────────────────────────────────
 
 function toPushCommit(c: ApiCommit): PushCommit {
   return {
@@ -300,8 +293,6 @@ export async function backfillRepositories(repoIds: string[]): Promise<void> {
   }
 }
 
-// ─── Webhook events ────────────────────────────────────────────────────────
-
 const installationRefSchema = z.object({ installation: z.object({ id: z.union([z.number(), z.string()]) }) });
 
 const installationEventSchema = z.object({
@@ -320,7 +311,6 @@ const repositoriesEventSchema = z.object({
 
 export type AppEventResult = { status: number; message: string; backfill?: string[] };
 
-/** Handles one verified App webhook delivery. */
 export async function handleAppEvent(event: string | null, payload: unknown): Promise<AppEventResult> {
   if (event === "ping") return { status: 200, message: "pong" };
 

@@ -27,7 +27,6 @@ export function GitHubAppPanel({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  // While history is being imported, refresh the status every few seconds.
   const importing = installations.some((i) =>
     i.repositories.some((r) => r.backfillStatus === "pending" || r.backfillStatus === "running"),
   );

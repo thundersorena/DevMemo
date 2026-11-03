@@ -6,14 +6,6 @@ import type { UpdateDayInput } from "@/lib/validation";
 import { db } from "./db";
 import { NotFoundError } from "./errors";
 
-/**
- * Journal service: the single place that reads and writes journal data.
- * REST handlers, server actions, the GitHub ingester and MCP tools all go
- * through these functions. Every function is scoped by userId.
- */
-
-// ─── View types (plain JSON-safe objects) ──────────────────────────────────
-
 export type NoteView = {
   id: string;
   content: string;
@@ -57,8 +49,6 @@ export type MonthView = {
   days: MonthDayView[];
 };
 
-// ─── Mappers ───────────────────────────────────────────────────────────────
-
 const noteSelect = {
   id: true,
   content: true,
@@ -96,8 +86,6 @@ function emptyDay(date: DateKey): DayView {
   return { date, isWorkDay: false, summary: null, notes: [], commits: [] };
 }
 
-// ─── Internal helpers ──────────────────────────────────────────────────────
-
 type Tx = Prisma.TransactionClient;
 
 /** Find or create the Day row for a user/date. Safe under concurrency. */
@@ -109,8 +97,6 @@ export async function ensureDay(userId: string, date: DateKey, tx: Tx = db) {
     select: { id: true },
   });
 }
-
-// ─── Queries ───────────────────────────────────────────────────────────────
 
 export async function getDay(userId: string, date: DateKey): Promise<DayView> {
   const day = await db.day.findUnique({
@@ -133,7 +119,6 @@ export async function getDay(userId: string, date: DateKey): Promise<DayView> {
   };
 }
 
-/** Full days (notes + commits) for an inclusive date range. Only days with content. */
 export async function getRange(userId: string, from: DateKey, to: DateKey): Promise<DayView[]> {
   const days = await db.day.findMany({
     where: { userId, date: { gte: dateKeyToDb(from), lte: dateKeyToDb(to) } },
@@ -157,7 +142,6 @@ export async function getRange(userId: string, from: DateKey, to: DateKey): Prom
     .filter((d) => d.isWorkDay || d.summary || d.notes.length > 0 || d.commits.length > 0);
 }
 
-/** Earliest journal date of the user, or null if the journal is empty. */
 export async function getFirstDate(userId: string): Promise<DateKey | null> {
   const first = await db.day.findFirst({ where: { userId }, orderBy: { date: "asc" }, select: { date: true } });
   return first ? dbToDateKey(first.date) : null;
@@ -211,8 +195,6 @@ export async function getCommits(
   return commits.map(toCommitView);
 }
 
-// ─── Mutations ─────────────────────────────────────────────────────────────
-
 export async function updateDay(
   userId: string,
   date: DateKey,
@@ -235,7 +217,6 @@ export async function updateDay(
   return getDay(userId, date);
 }
 
-/** Appends a note. Never touches existing notes. */
 export async function addNote(
   userId: string,
   date: DateKey,

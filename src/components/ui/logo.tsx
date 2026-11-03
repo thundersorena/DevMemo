@@ -9,12 +9,6 @@ const SIZES = {
   lg: 36,
 } as const;
 
-/**
- * DevMemo logo.
- * - The wordmark has a light-mode variant (dark "dev") and a dark-mode
- *   variant (original light "dev"), switched with the color scheme.
- * - `compact` shows only the mark on small screens.
- */
 export function Logo({
   className = "",
   compact = false,

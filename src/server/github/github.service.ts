@@ -7,12 +7,6 @@ import { NotFoundError } from "../errors";
 import { importCommits } from "../journal.service";
 import { extractCommits, pushPayloadSchema, type AuthorIdentity } from "./push";
 
-/**
- * GitHub integration: per-user webhook endpoints and push ingestion.
- * The ingestion path is GitHub → webhook route → this service → database.
- * No AI is involved.
- */
-
 export type HookView = {
   id: string;
   url: string;
@@ -47,14 +41,11 @@ function toView(hook: {
   };
 }
 
-// ─── Hook management ───────────────────────────────────────────────────────
-
 export async function getHook(userId: string): Promise<HookView | null> {
   const hook = await db.gitHubHook.findUnique({ where: { userId } });
   return hook ? toView(hook) : null;
 }
 
-/** Creates the user's webhook endpoint (or returns the existing one). */
 export async function createHook(userId: string): Promise<HookView> {
   const hook = await db.gitHubHook.upsert({
     where: { userId },
@@ -86,8 +77,6 @@ export async function rotateHookSecret(userId: string): Promise<string> {
 export async function deleteHook(userId: string): Promise<void> {
   await db.gitHubHook.deleteMany({ where: { userId } });
 }
-
-// ─── Identity ──────────────────────────────────────────────────────────────
 
 /**
  * Users who signed in before `githubLogin` was captured don't have it yet.
@@ -123,7 +112,6 @@ export async function ensureGitHubLogin(userId: string): Promise<void> {
   }
 }
 
-/** Who the user is on GitHub, their timezone, and their import preference. */
 export async function loadIdentity(userId: string) {
   const user = await db.user.findUniqueOrThrow({
     where: { id: userId },
@@ -147,8 +135,6 @@ export async function loadIdentity(userId: string) {
     onlyOwnCommits: user.onlyOwnCommits,
   };
 }
-
-// ─── Delivery handling ─────────────────────────────────────────────────────
 
 export type DeliveryOutcome = {
   status: number;

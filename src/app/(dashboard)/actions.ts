@@ -128,8 +128,6 @@ export async function updateSettingsAction(
   }
 }
 
-// ─── GitHub webhook ─────────────────────────────────────────────────────────
-
 export async function createHookAction(): Promise<ActionResult> {
   try {
     const user = await requireUser();
@@ -183,8 +181,6 @@ export async function deleteHookAction(): Promise<ActionResult> {
   }
 }
 
-// ─── API / MCP tokens ───────────────────────────────────────────────────────
-
 const tokenNameSchema = z.string().trim().min(1, "Give the token a name").max(60);
 
 export async function createTokenAction(
@@ -213,8 +209,6 @@ export async function revokeTokenAction(tokenId: string): Promise<ActionResult> 
   }
 }
 
-// ─── GitHub App ─────────────────────────────────────────────────────────────
-
 export async function reimportHistoryAction(): Promise<ActionResult> {
   try {
     const user = await requireUser();
@@ -237,8 +231,6 @@ export async function unlinkInstallationAction(id: string): Promise<ActionResult
     return failure(error);
   }
 }
-
-// ─── GitLab / Bitbucket webhooks ────────────────────────────────────────────
 
 const providerSchema = z.enum(PROVIDERS);
 
@@ -284,8 +276,6 @@ export async function deleteProviderHookAction(provider: string): Promise<Action
   }
 }
 
-// ─── Commit emails ──────────────────────────────────────────────────────────
-
 export async function updateAuthorEmailsAction(
   _prev: ActionResult | null,
   formData: FormData,
@@ -303,8 +293,6 @@ export async function updateAuthorEmailsAction(
     return failure(error);
   }
 }
-
-// ─── Connected OAuth apps (MCP) ─────────────────────────────────────────────
 
 export async function revokeConnectedAppAction(clientId: string): Promise<ActionResult> {
   try {

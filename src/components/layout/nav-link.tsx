@@ -24,7 +24,6 @@ export function NavLinks({ items }: { items: NavItem[] }) {
   });
 }
 
-/** Static fallback used in the prerendered shell. */
 export function NavLinksFallback({ items }: { items: NavItem[] }) {
   return items.map((item) => (
     <Link key={item.href} href={item.href} className={linkClass(false)}>

@@ -1,11 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Self-contained server bundle for Docker / self-hosting.
   output: "standalone",
-  experimental: {
-    agentFeedback: true,
-  },
+  agentRules: false,
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

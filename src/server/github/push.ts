@@ -1,13 +1,6 @@
-/**
- * Pure helpers for GitHub push webhooks: signature verification, payload
- * parsing, author matching and commit extraction. No database or Next.js
- * imports, so this module is unit-tested directly.
- */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { dateKeyInTimeZone, type DateKey } from "@/lib/dates";
-
-// ─── Signature ─────────────────────────────────────────────────────────────
 
 /**
  * Verifies `X-Hub-Signature-256` (`sha256=<hex>`) against the raw body.
@@ -23,8 +16,6 @@ export function verifyGitHubSignature(
   const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest();
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
-
-// ─── Payload ───────────────────────────────────────────────────────────────
 
 const personSchema = z
   .object({
@@ -57,8 +48,6 @@ export const pushPayloadSchema = z.object({
 export type PushPayload = z.infer<typeof pushPayloadSchema>;
 export type PushCommit = z.infer<typeof commitSchema>;
 
-// ─── Author matching ───────────────────────────────────────────────────────
-
 export type AuthorIdentity = {
   githubLogin: string | null;
   /** Numeric GitHub user id (from the OAuth account), as a string. */
@@ -89,8 +78,6 @@ export function isOwnCommit(commit: PushCommit, identity: AuthorIdentity): boole
   }
   return false;
 }
-
-// ─── Extraction ────────────────────────────────────────────────────────────
 
 export type CommitInput = {
   sha: string;

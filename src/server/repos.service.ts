@@ -11,7 +11,6 @@ export type RepositorySummary = {
   lastDate: DateKey;
 };
 
-/** Every repository with imported commits, most recently active first. */
 export async function listRepositories(userId: string): Promise<RepositorySummary[]> {
   const groups = await db.commit.groupBy({
     by: ["provider", "repositoryName"],
@@ -36,7 +35,6 @@ export type TimelineDay = {
   isWorkDay: boolean;
   summary: string | null;
   commits: CommitView[];
-  /** Notes written that day: the context around the commits. */
   notes: NoteView[];
 };
 
@@ -51,10 +49,6 @@ export type RepositoryTimeline = {
 
 const DAYS_PER_PAGE = 30;
 
-/**
- * Development history of one repository: days with commits, newest first,
- * each with that day's notes for context. Paginated by active day.
- */
 export async function getRepositoryTimeline(
   userId: string,
   provider: string,
@@ -65,7 +59,6 @@ export async function getRepositoryTimeline(
   const totalCommits = await db.commit.count({ where });
   if (totalCommits === 0) return null;
 
-  // Active dates for this repo, newest first; one extra to know if there's more.
   const dayRows = await db.day.findMany({
     where: {
       userId,

@@ -249,8 +249,7 @@ model ProviderHook {
   @@map("provider_hook")
 }
 
-// ─── MCP OAuth (Better Auth jwt + @better-auth/mcp) ──────────────────────────
-// Field names follow the plugins' schema; don't rename them.
+// MCP OAuth tables. Field names follow the Better Auth plugin schema.
 
 model Jwks {
   id         String    @id

@@ -30,7 +30,6 @@ export function decryptSecret(payload: string): string {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
 
-/** URL-safe random token with the given prefix, e.g. "dm_…". */
 export function randomToken(prefix: string, bytes = 32): string {
   return `${prefix}${randomBytes(bytes).toString("base64url")}`;
 }

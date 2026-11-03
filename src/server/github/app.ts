@@ -3,11 +3,6 @@ import { createSign } from "node:crypto";
 import { githubApp, type GitHubAppConfig } from "../env";
 import { BadRequestError } from "../errors";
 
-/**
- * Minimal GitHub App client: App JWT, installation tokens, and the few REST
- * endpoints DevMemo needs. No SDK dependency.
- */
-
 export class GitHubApiError extends Error {
   constructor(
     message: string,
@@ -23,8 +18,6 @@ export function requireApp(): GitHubAppConfig {
   if (!app) throw new BadRequestError("The GitHub App is not configured on this server");
   return app;
 }
-
-// ─── Auth ──────────────────────────────────────────────────────────────────
 
 /** RS256 JWT identifying the App (valid ~9 minutes). */
 export function createAppJwt(app: Pick<GitHubAppConfig, "appId" | "privateKey">, now = Date.now()): string {
@@ -51,8 +44,6 @@ export async function installationToken(installationId: string): Promise<string>
   tokenCache.set(installationId, { token: data.token, expiresAt: Date.parse(data.expires_at) });
   return data.token;
 }
-
-// ─── HTTP ──────────────────────────────────────────────────────────────────
 
 type RequestOptions = {
   method?: string;
@@ -98,7 +89,6 @@ async function githubWithHeaders<T>(
   return { data: (await res.json()) as T, headers: res.headers };
 }
 
-/** Follows `Link: rel="next"` pagination up to `maxPages`. */
 export async function githubPaginate<T, R = T[]>(
   path: string,
   options: RequestOptions & { maxPages?: number; pick?: (page: R) => T[] },
@@ -116,9 +106,6 @@ export async function githubPaginate<T, R = T[]>(
   return { items, truncated: Boolean(next) };
 }
 
-// ─── User authorization (installation ownership check) ─────────────────────
-
-/** Exchanges the OAuth `code` from the installation callback for a user token. */
 export async function exchangeUserCode(code: string): Promise<string> {
   const app = requireApp();
   const res = await fetch(`${app.webUrl}/login/oauth/access_token`, {
@@ -133,8 +120,6 @@ export async function exchangeUserCode(code: string): Promise<string> {
   }
   return data.access_token;
 }
-
-// ─── Shapes we use ─────────────────────────────────────────────────────────
 
 export type ApiInstallation = {
   id: number;

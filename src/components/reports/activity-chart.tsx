@@ -3,11 +3,6 @@ import type { ReportView } from "@/server/reports.service";
 const WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
 const LONG = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 
-/**
- * Paired bars per day: commits and notes. Thin marks anchored to the
- * baseline, rounded data ends, per-day hover tooltip, legend, and an
- * accessible table alternative (the day list below the chart).
- */
 export function ActivityChart({ daily, mode }: { daily: ReportView["daily"]; mode: "week" | "month" }) {
   const max = Math.max(1, ...daily.map((d) => Math.max(d.commits, d.notes)));
   const ticks = max <= 4 ? Array.from({ length: max + 1 }, (_, i) => i) : [0, Math.round(max / 2), max];
@@ -47,7 +42,6 @@ export function ActivityChart({ daily, mode }: { daily: ReportView["daily"]; mod
                   className="w-full max-w-2.5 rounded-t-[4px] bg-chart-notes transition-opacity group-hover:opacity-80"
                   style={{ height: `${(d.notes / max) * 100}%` }}
                 />
-                {/* hover tooltip; hit target is the whole day column */}
                 <span
                   role="tooltip"
                   className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs whitespace-nowrap shadow-lg group-hover:block"

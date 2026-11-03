@@ -8,16 +8,8 @@ import { getCurrentUserById } from "@/server/session";
 import type { CurrentUser } from "@/server/session";
 
 /**
- * MCP endpoint (Streamable HTTP, stateless).
- *
- * Two ways to authenticate:
- *  - OAuth 2.1 (Claude.ai, ChatGPT, Cursor, VS Code…): the client discovers
- *    DevMemo's authorization server from the 401 challenge, the user signs in
- *    and approves, and the client sends a JWT access token bound to this
- *    resource. Verified by Better Auth's requireMcpAuth.
- *  - Personal access token `dm_…` from Settings (CLIs, scripts, config files).
- *
- * Each request gets a fresh MCP server bound to the authenticated user.
+ * Stateless MCP endpoint. Accepts an OAuth access token bound to this
+ * resource, or a personal `dm_` token.
  */
 
 async function serve(req: Request, user: CurrentUser): Promise<Response> {

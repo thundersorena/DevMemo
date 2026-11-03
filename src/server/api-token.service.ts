@@ -5,11 +5,6 @@ import { env } from "./env";
 import { BadRequestError, NotFoundError } from "./errors";
 import type { CurrentUser } from "./session";
 
-/**
- * Personal access tokens for the REST API and MCP.
- * Tokens look like `dm_<43 chars>`; only a SHA-256 hash is stored.
- */
-
 export const TOKEN_PREFIX = "dm_";
 const MAX_TOKENS_PER_USER = 20;
 const LAST_USED_RESOLUTION_MS = 5 * 60 * 1000;
@@ -60,7 +55,6 @@ export async function revokeToken(userId: string, tokenId: string): Promise<void
   if (count === 0) throw new NotFoundError("Token not found");
 }
 
-/** Resolves a bearer token to its user, or null if unknown. */
 export async function authenticateToken(token: string): Promise<CurrentUser | null> {
   if (!token.startsWith(TOKEN_PREFIX) || token.length > 200) return null;
 

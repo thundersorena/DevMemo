@@ -1,5 +1,3 @@
-/** Pure helpers for search highlighting (shared by server and tests). */
-
 /** Words to highlight: query terms without websearch operators. */
 export function searchTerms(query: string): string[] {
   const terms = new Set<string>();

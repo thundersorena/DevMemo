@@ -1,9 +1,3 @@
-/**
- * Push-payload adapters for GitLab and Bitbucket Cloud. Each one converts the
- * provider's format into the GitHub-shaped PushPayload, so author matching,
- * timezone handling and import stay in one place (extractCommits).
- * Pure module: no database or Next.js imports.
- */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { PushPayload } from "../github/push";
@@ -20,8 +14,6 @@ function safeEqual(a: string, b: string): boolean {
   const right = Buffer.from(b);
   return left.length === right.length && timingSafeEqual(left, right);
 }
-
-// ─── GitLab ────────────────────────────────────────────────────────────────
 
 /** GitLab sends the secret verbatim in `X-Gitlab-Token`. */
 export function verifyGitLabToken(header: string | null, secret: string): boolean {
@@ -82,8 +74,6 @@ export function parseGitLabPush(event: string | null, payload: unknown): ParseRe
   };
 }
 
-// ─── Bitbucket Cloud ───────────────────────────────────────────────────────
-
 /** Bitbucket Cloud signs with HMAC-SHA256 in `X-Hub-Signature: sha256=<hex>`. */
 export function verifyBitbucketSignature(rawBody: string, header: string | null, secret: string): boolean {
   if (!header?.startsWith("sha256=")) return false;
@@ -118,7 +108,6 @@ const bitbucketPushSchema = z.object({
   }),
 });
 
-/** "Jane Doe <jane@example.com>" → { name, email } */
 export function parseRawAuthor(raw: string | null | undefined): { name: string | null; email: string | null } {
   if (!raw) return { name: null, email: null };
   const match = /^(.*?)\s*<([^>]+)>\s*$/.exec(raw);

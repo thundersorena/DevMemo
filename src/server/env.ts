@@ -36,7 +36,6 @@ const BUILD_PLACEHOLDERS: Env = {
 
 let cached: Env | undefined;
 
-/** Validated server environment. Throws a readable error on misconfiguration. */
 export function env(): Env {
   if (cached) return cached;
 
@@ -66,8 +65,6 @@ export function env(): Env {
   cached = parsed.data;
   return cached;
 }
-
-// ─── Optional: GitHub App ──────────────────────────────────────────────────
 
 const GITHUB_APP_KEYS = [
   "GITHUB_APP_ID",
@@ -156,7 +153,6 @@ export function githubApp(): GitHubAppConfig | null {
   return githubAppState().config;
 }
 
-/** Configuration plus a human-readable problem (names only, never values). */
 export function githubAppState(): GitHubAppState {
   if (appState) return appState;
   const state = loadGitHubApp();

@@ -23,7 +23,6 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
   );
 }
 
-/** Read-only value with a copy button. */
 export function CopyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div>
@@ -39,7 +38,6 @@ export function CopyField({ label, value, hint }: { label: string; value: string
   );
 }
 
-/** Multi-line code snippet with a copy button. */
 export function CodeBlock({ code, label }: { code: string; label?: string }) {
   return (
     <div>

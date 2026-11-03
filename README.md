@@ -5,132 +5,469 @@
   </picture>
 </p>
 
-# DevMemo
-## Your Developer Memory, Connected.
+<h1 align="center">DevMemo</h1>
 
-**An open-source personal developer journal that tracks daily work, Git activity, and connects with AI assistants through MCP.**
+<p align="center">
+  <strong>Your developer memory, connected.</strong><br>
+  An open-source developer journal that puts your daily notes, your Git activity and your AI assistant on one calendar.
+</p>
+
+<p align="center">
+  <a href="https://devmemo.phdev.ir">Live demo</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#connect-an-ai-assistant-mcp">MCP setup</a> ·
+  <a href="#self-hosting">Self-hosting</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
+
+<p align="center">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
+  <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-black">
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-17-336791">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-OAuth%202.1-7c3aed">
+</p>
 
 ---
 
-## Status
+## Table of contents
 
-| Phase | Scope | Status |
-|---|---|---|
-| 1 | Core journal: GitHub sign-in, calendar, daily notes, workdays, search, REST API | ✅ Implemented |
-| 2 | GitHub commit ingestion (per-user webhooks) | ✅ Implemented |
-| 3 | MCP server + personal access tokens | ✅ Implemented |
-| 4 | AI summaries | ✅ Via MCP (`update_day.summary`), no server-side AI provider needed |
-| 5 | GitHub App, GitLab/Bitbucket, MCP OAuth, reports, repository timelines, export, full-text search | ✅ Implemented |
+- [Why DevMemo?](#why-devmemo)
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Tech stack](#tech-stack)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Connecting Git](#connecting-git)
+- [Connect an AI assistant (MCP)](#connect-an-ai-assistant-mcp)
+- [Using DevMemo](#using-devmemo)
+- [REST API](#rest-api)
+- [Self-hosting](#self-hosting)
+- [Deploying to Vercel](#deploying-to-vercel)
+- [Project structure](#project-structure)
+- [Data model](#data-model)
+- [Security](#security)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
 
-## Getting Started
+---
 
-Requirements: Node.js 20.19+, Docker (for local Postgres) or any Postgres 14+.
+## Why DevMemo?
+
+Every developer does a lot of work in a day, and that work ends up scattered: commits on GitHub or GitLab, notes in random text files, decisions buried in chat threads with an AI assistant. When the daily standup, the weekly report, a client invoice or a performance review comes around, rebuilding *what did I actually do on Tuesday?* is slow and incomplete.
+
+DevMemo gives every user a calendar. Each day on that calendar collects three things automatically:
+
+- **Your notes**: what you worked on, decided, learned or got stuck on.
+- **Your commits**: pushed from GitHub, GitLab or Bitbucket, filed under the right day in *your* time zone.
+- **Your AI assistant's notes**: Claude, Cursor, ChatGPT or any other MCP client can read your journal and write to it while you work.
+
+On top of that you get reports, a timeline per repository, full-text search and exports, all from data you own.
+
+DevMemo is:
+
+- **Open source** (MIT) and **self-hostable** with one `docker compose` command.
+- **Multi-user**: sign in with GitHub; every user's data is isolated.
+- **Low-friction**: commits arrive on their own; you only write what Git can't see.
+- **Model-agnostic**: no built-in chatbot and no AI bill. Bring whichever assistant you already use through the open [Model Context Protocol](https://modelcontextprotocol.io).
+
+## Features
+
+| Area | What you get |
+|---|---|
+| 📅 **Calendar** | A monthly view of workdays, commit counts and notes per day. |
+| 📝 **Daily journal** | A timeline of notes for each day, a day summary, and a "workday" flag. Notes show where they came from (manual or AI). |
+| 🔗 **GitHub App** | One-click connection like Vercel's: pick repositories, and the last **90 days** of history are imported automatically. |
+| 🪝 **Webhooks** | A manual GitHub webhook, plus **GitLab** and **Bitbucket** support, for repositories where you can't install the App. |
+| 👤 **Only your commits** | Commits are matched to you by GitHub login and your commit emails, so team repositories don't flood your journal. |
+| 🤖 **MCP server** | 8 tools, 3 prompts and 2 resources at `/api/mcp`, protected by **OAuth 2.1** (or a personal access token). |
+| 📊 **Reports** | Weekly and monthly stats, a daily activity chart, activity per repository, copy or download as Markdown. |
+| 🗂️ **Repository timelines** | Every commit to a repository, grouped by day, with that day's notes as context. |
+| 🔍 **Search** | PostgreSQL full-text search with `"exact phrases"`, `OR` and `-exclude`, filtered by type, date range and repository. |
+| 📦 **Export** | The whole journal or a date range as Markdown, JSON or CSV. |
+| 🌗 **Light and dark** | Follows your system theme; works from 360 px phones up. |
+
+## How it works
+
+```text
+ Browser ──── session cookie ────┐
+ AI assistant ── Bearer token ───┤      ┌──────────────────────────────┐
+ GitHub / GitLab / Bitbucket ────┴────▶ │  Next.js app                 │
+          (signed push webhooks)        │  pages · /api · /api/mcp     │
+                                        │          │                   │
+                                        │   service layer (src/server) │
+                                        │          │                   │
+                                        │   Prisma Client              │
+                                        └──────────┬───────────────────┘
+                                                   ▼
+                                              PostgreSQL
+```
+
+One Next.js application serves the web UI, the REST API, the webhook receivers and the MCP server. All of them call the same service layer, so a rule like *"which calendar day does this commit belong to?"* or *"a user only ever sees their own data"* is written exactly once.
+
+**A typical day:**
+
+1. You push commits. GitHub sends a signed webhook; DevMemo verifies it, keeps only your commits, converts each timestamp to your time zone and files it under the right day.
+2. While coding you tell your assistant *"note that I fixed the payment bug by retrying the webhook"*. It calls the `add_note` tool.
+3. Next morning you ask *"write my standup"*. The `daily_standup` prompt reads yesterday and today and drafts it.
+4. On Friday you open **Reports** and copy the week as Markdown.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Language | TypeScript (strict) |
+| Framework | [Next.js 16](https://nextjs.org) (App Router, Server Components, Route Handlers, Cache Components) |
+| UI | React 19, Tailwind CSS 4, Geist font |
+| Database | PostgreSQL 17 |
+| ORM | [Prisma 7](https://www.prisma.io) with `@prisma/adapter-pg` |
+| Auth | [Better Auth](https://www.better-auth.com) (GitHub sign-in, sessions, OAuth 2.1 provider via `@better-auth/mcp` and `@better-auth/cimd`) |
+| AI protocol | [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) (Streamable HTTP, stateless) |
+| Validation | Zod 4 |
+| Tests | Vitest |
+| Hosting | Vercel, or Docker anywhere |
+| Package manager | npm (enforced) |
+
+## Quick start
+
+**Requirements:** Node.js **20.19+**, npm, and Docker (for the local database) or any PostgreSQL 14+.
 
 ```bash
-# 1. Install dependencies (also generates the Prisma client)
+# 1. Clone
+git clone https://github.com/thundersorena/DevMemo.git
+cd DevMemo
+
+# 2. Install dependencies (also generates the Prisma client)
 npm install
 
-# 2. Start Postgres
+# 3. Start PostgreSQL
 docker compose up -d db
 
-# 3. Configure environment
+# 4. Configure the environment
 cp .env.example .env
-#    - BETTER_AUTH_SECRET: openssl rand -base64 32
-#    - GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET: create a GitHub OAuth App at
-#      https://github.com/settings/developers with callback URL
-#      http://localhost:3000/api/auth/callback/github
+#    then fill in BETTER_AUTH_SECRET, GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET (see below)
 
-# 4. Create the database schema
-npm run db:migrate -- --name init
+# 5. Create the database schema
+npm run db:deploy
 
-# 5. Run
+# 6. Start the dev server
 npm run dev
 ```
 
-Open http://localhost:3000 and sign in with GitHub.
+Open <http://localhost:3000> and click **Continue with GitHub**.
 
-### GitHub App (recommended)
+### Create the GitHub OAuth App (required for sign-in)
 
-With the GitHub App, users connect repositories with one click, like on Vercel: **Settings → Connect GitHub repositories**, pick repositories, done. The last 90 days of history are imported automatically, and new pushes arrive through the App's single webhook.
+1. Go to <https://github.com/settings/developers> → **OAuth Apps** → **New OAuth App**.
+2. Fill in:
 
-Create the App once at https://github.com/settings/apps/new:
+   | Field | Value |
+   |---|---|
+   | Homepage URL | `http://localhost:3000` |
+   | Authorization callback URL | `http://localhost:3000/api/auth/callback/github` |
+
+3. Copy the **Client ID** and generate a **Client secret** into `.env` as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
+4. Generate the auth secret:
+
+   ```bash
+   openssl rand -base64 32
+   ```
+
+   and put it in `BETTER_AUTH_SECRET`.
+
+In production, create a separate OAuth App with your public domain in both URLs.
+
+## Configuration
+
+All configuration is done with environment variables. Copy `.env.example` to `.env` and fill it in. The app validates every variable when it starts and tells you exactly which one is wrong.
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string. |
+| `BETTER_AUTH_SECRET` | ✅ | At least 32 characters. Signs sessions and derives the key that encrypts webhook secrets. **Changing it signs everyone out and invalidates stored webhook secrets.** |
+| `BETTER_AUTH_URL` | ✅ | The public URL of the app, e.g. `https://devmemo.example.com`. Use `https://` in production (enables secure cookies). Must not be `localhost` on a deployed app. |
+| `GITHUB_CLIENT_ID` | ✅ | GitHub OAuth App client ID (sign-in). |
+| `GITHUB_CLIENT_SECRET` | ✅ | GitHub OAuth App client secret. |
+| `APP_TIMEZONE` | — | Default time zone (IANA name) for users who haven't picked one. Default: `UTC`. |
+| `GITHUB_APP_ID` | — | GitHub App ID (numeric). |
+| `GITHUB_APP_SLUG` | — | The App's URL name, from `github.com/apps/<slug>`. |
+| `GITHUB_APP_CLIENT_ID` | — | GitHub App client ID. |
+| `GITHUB_APP_CLIENT_SECRET` | — | GitHub App client secret. |
+| `GITHUB_APP_WEBHOOK_SECRET` | — | The App's webhook secret. |
+| `GITHUB_APP_PRIVATE_KEY` | — | The full contents of the App's `.pem` file (multi-line, `\n`-escaped, or base64). |
+
+The six `GITHUB_APP_*` variables are all-or-nothing. If some are missing or the key can't be parsed, the GitHub App is disabled, **Settings** shows which variable is wrong, and the manual webhook keeps working.
+
+## Connecting Git
+
+### Option 1: GitHub App (recommended)
+
+Users connect repositories in one click, and the last 90 days of history are imported automatically.
+
+**One-time setup by the instance owner.** Create the App at <https://github.com/settings/apps/new>:
 
 | Field | Value |
 |---|---|
 | Homepage URL | `https://your-domain` |
 | Callback URL | `https://your-domain/api/github/app/callback` |
-| Request user authorization (OAuth) during installation | ✅ (DevMemo uses it to verify who owns the installation) |
+| Request user authorization (OAuth) during installation | ✅ (used to verify who owns the installation) |
 | Webhook URL | `https://your-domain/api/webhooks/github-app` |
-| Webhook secret | a random value (`openssl rand -hex 32`) |
-| Repository permissions → Contents | Read-only |
-| Subscribe to events | Push |
+| Webhook secret | a random value: `openssl rand -hex 32` |
+| Repository permissions → **Contents** | Read-only |
+| Subscribe to events | **Push** |
 | Where can this GitHub App be installed? | Any account |
 
-Then generate a private key and a client secret, and set the six `GITHUB_APP_*` variables from `.env.example`.
+Then, on the App's page:
 
-The manual webhook below stays available under **Settings → Advanced** for self-hosters who don't create an App.
+1. Copy the **App ID**, **Client ID** and the slug from the public URL (`github.com/apps/<slug>`).
+2. **Generate a new client secret.**
+3. Under **Private keys**, click **Generate a private key**. A `.pem` file downloads. Paste its **entire contents**, including the `-----BEGIN … KEY-----` and `-----END … KEY-----` lines, into `GITHUB_APP_PRIVATE_KEY`.
 
-### Connect GitHub activity
+> ⚠️ The `SHA256:…` string GitHub shows next to a key is its **fingerprint**, not the key. GitHub only lets you download the key once; if you've lost the file, generate a new one.
 
-1. **Settings → GitHub activity → Set up GitHub webhook.**
-2. On GitHub, open a repository (or organization) → **Settings → Webhooks → Add webhook**:
-   - Payload URL: the URL shown in Settings
-   - Content type: `application/json`
-   - Secret: the secret shown in Settings (same for every repository)
-   - Events: **Just the push event**
-3. GitHub sends a `ping`, and the status in Settings turns green.
+**For users:** **Settings → GitHub → Connect GitHub repositories**, choose *All repositories* or pick some, and you're done. Import progress is shown per repository.
 
-GitHub must be able to reach the URL. For local development, expose port 3000 with a tunnel (e.g. `cloudflared tunnel --url http://localhost:3000`) and set `BETTER_AUTH_URL` to the tunnel URL.
+### Option 2: Manual GitHub webhook
 
-### GitLab and Bitbucket
+For repositories you can't install the App on, or instances without an App:
 
-**Settings → GitLab & Bitbucket → Set up webhook**, then add the URL and secret to a project (GitLab: *Settings → Webhooks*, trigger *Push events*; Bitbucket: *Repository settings → Webhooks*, trigger *Repository push*). GitLab authenticates with `X-Gitlab-Token`, Bitbucket signs with `X-Hub-Signature` (HMAC-SHA256).
+1. **Settings → GitHub → Advanced: manual webhook → Set up webhook.**
+2. On GitHub: repository (or organization) → **Settings → Webhooks → Add webhook**
+   - **Payload URL:** the URL shown in Settings
+   - **Content type:** `application/json`
+   - **Secret:** the secret shown in Settings (the same for all your repositories)
+   - **Events:** *Just the push event*
+3. GitHub sends a `ping` and the status in Settings turns green.
 
-Commits there are recognized by email, so add the emails you commit with under **Settings → GitHub → Your commit emails**. Note: GitLab includes at most 20 commits per push and Bitbucket only a few per branch, so very large pushes are partially imported.
+### Option 3: GitLab and Bitbucket
 
-### Connect an AI assistant (MCP)
+**Settings → GitLab & Bitbucket → Set up webhook**, then add the URL and secret to your project:
 
-DevMemo is an OAuth 2.1 protected MCP server, so any MCP client that supports remote servers can connect by URL alone. Add `https://your-domain/api/mcp` to the client; it discovers DevMemo's authorization server from the `401` challenge, opens the browser for sign-in and consent, and receives a short-lived access token bound to `/api/mcp`.
+- **GitLab:** *Settings → Webhooks*, paste the URL, put the secret in **Secret token**, trigger **Push events**.
+- **Bitbucket:** *Repository settings → Webhooks*, paste the URL and secret, trigger **Repository push**.
 
-Settings → **AI assistants (MCP)** has step-by-step guides for Claude (claude.ai / desktop), Claude Code, ChatGPT, Cursor, VS Code, Windsurf, Gemini CLI and Codex CLI, plus a list of connected apps you can disconnect.
+GitLab and Bitbucket commits are matched by email, so add the emails you commit with under **Settings → Your commit emails**. GitLab sends at most 20 commits per push and Bitbucket only a few per branch, so very large pushes are partially imported.
 
-For clients without OAuth, create a **personal access token** in the same section and send it as `Authorization: Bearer dm_…` (it also works for the REST API):
+### Only your commits
+
+By default DevMemo keeps only commits you authored, matched by your GitHub login, your account email and any extra emails you add in Settings. Turn off **Only import my commits** to keep everyone's commits from connected repositories.
+
+> **Local development:** GitHub has to reach your machine to deliver webhooks. Expose port 3000 with a tunnel (for example `cloudflared tunnel --url http://localhost:3000`) and set `BETTER_AUTH_URL` to the tunnel URL.
+
+## Connect an AI assistant (MCP)
+
+DevMemo is a remote MCP server at:
+
+```text
+https://your-domain/api/mcp
+```
+
+It is protected with **OAuth 2.1**, so most clients need only that URL. The client discovers DevMemo's authorization server, opens your browser to sign in and approve access, and receives a short-lived token that only works for `/api/mcp`.
+
+**Settings → AI assistants (MCP)** has copy-paste guides for Claude (claude.ai and desktop), Claude Code, ChatGPT, Cursor, VS Code, Windsurf, Gemini CLI and Codex CLI. A few examples:
+
+**Claude Code**
+
+```bash
+claude mcp add --scope user --transport http devmemo https://your-domain/api/mcp
+```
+
+**Cursor** (`~/.cursor/mcp.json`) and **VS Code** (`.vscode/mcp.json`, key `servers`)
+
+```json
+{
+  "mcpServers": {
+    "devmemo": { "url": "https://your-domain/api/mcp" }
+  }
+}
+```
+
+**Claude (claude.ai / desktop):** *Settings → Connectors → Add custom connector*, paste the URL.
+
+**Clients without OAuth:** create a **personal access token** in Settings and send it as a header:
 
 ```bash
 claude mcp add --scope user --transport http devmemo https://your-domain/api/mcp --header "Authorization: Bearer dm_..."
 ```
 
-Keep the command on one line: bash's trailing `\` continuation doesn't work in PowerShell. MCP tools are not slash commands; just ask in plain language (e.g. "Add a note to today: fixed the login bug").
+Keep the command on one line (a trailing `\` doesn't continue lines in PowerShell). Treat tokens like passwords; revoke any token you've pasted somewhere public.
+
+### What your assistant can do
+
+| Type | Name | Description |
+|---|---|---|
+| Tool | `get_today` | Today's notes and commits, in your time zone |
+| Tool | `get_day` | One day by date (`YYYY-MM-DD`) |
+| Tool | `get_range` | A range of days |
+| Tool | `get_month` | A month overview |
+| Tool | `get_commits` | Commits, filtered by repository and date |
+| Tool | `search_journal` | Full-text search with type, date and repository filters |
+| Tool | `add_note` | Add a note to a day (marked as written by AI) |
+| Tool | `update_day` | Set a day's summary or workday flag |
+| Prompt | `daily_standup` | Draft a standup from yesterday and today |
+| Prompt | `weekly_report` | Draft a weekly report |
+| Prompt | `summarize_day` | Summarize one day |
+| Resource | `devmemo://day/{date}` | A full day as Markdown |
+| Resource | `devmemo://week/current` | The current week |
+
+MCP tools aren't slash commands; just ask in plain language:
+
+> "What did I do last Thursday?"
+> "Add a note to today: switched the queue to SQS because of the retry limits."
+> "Write my weekly report and save a one-line summary on each day."
+
+You can see and disconnect every connected app under **Settings → AI assistants → Connected apps**.
 
 <details>
 <summary>OAuth details</summary>
 
 - Discovery: `/.well-known/oauth-protected-resource/api/mcp` (RFC 9728) → `/.well-known/oauth-authorization-server/api/auth` (RFC 8414).
-- Client registration: Client ID Metadata Documents (the current MCP standard) and Dynamic Client Registration (for clients that don't support CIMD yet).
-- Authorization code + PKCE (S256), refresh tokens, consent screen at `/consent`.
-- Access tokens are JWTs signed with keys published at `/api/auth/jwks`, audience-bound to the MCP resource.
-- Built on Better Auth's `@better-auth/mcp` plugin.
+- Client registration: Client ID Metadata Documents (the current MCP standard) and Dynamic Client Registration (RFC 7591).
+- Authorization code with PKCE (S256), refresh tokens, consent screen at `/consent`.
+- Access tokens are JWTs signed with keys published at `/api/auth/jwks` and audience-bound to the MCP resource.
 
 </details>
 
-### Features at a glance
+## Using DevMemo
 
-- **Calendar & daily journal**: notes timeline, workday flag, Git activity per day, AI summaries.
-- **Reports** (`/reports`): weekly or monthly stats, daily activity chart, activity per repository, copy/download as Markdown.
-- **Repositories** (`/repos`): per-repository timeline with that day's notes as context.
-- **Search** (`/search`): PostgreSQL full-text search with `"exact phrases"`, `OR` and `-exclude`, plus partial-word matching in any language; filter by type, date range and repository.
-- **Export** (Settings → Export, or `GET /api/export?format=md|json|csv&from=&to=`): the whole journal or a date range. CSV is UTF-8 with BOM and neutralizes spreadsheet formulas.
+| Page | Path | What it's for |
+|---|---|---|
+| Landing | `/` | Public introduction |
+| Calendar | `/calendar` | Monthly overview; click a day to open it |
+| Today | `/journal/today` | Jump to today |
+| Day | `/journal/YYYY-MM-DD` | Notes, commits, summary, workday flag |
+| Reports | `/reports` | Weekly or monthly stats and charts; copy as Markdown |
+| Repositories | `/repos` | Every repository with activity; open one for its timeline |
+| Search | `/search` | Full-text search across notes, commits and summaries |
+| Settings | `/settings` | Time zone, Git connections, commit emails, export, MCP and tokens |
 
-### Self-hosting with Docker
+**Search syntax:** `"exact phrase"`, `bug OR fix`, `-wip`. Short or partial words fall back to substring matching, which works in any language.
+
+**Export:** *Settings → Export*, or `GET /api/export?format=md|json|csv&from=YYYY-MM-DD&to=YYYY-MM-DD`. CSV is UTF-8 with BOM and neutralizes spreadsheet formulas.
+
+## REST API
+
+Every endpoint accepts either the browser session or `Authorization: Bearer dm_…`, and only ever returns the caller's own data.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/journal/{date}` | One day with notes and commits |
+| `PATCH` | `/api/journal/{date}` | Update a day's summary or workday flag |
+| `POST` | `/api/journal/{date}/notes` | Add a note |
+| `GET` | `/api/journal/{date}/commits` | Commits for a day |
+| `GET` | `/api/journal/month/{year}/{month}` | Month overview |
+| `GET` | `/api/journal/search?q=` | Search (`type`, `from`, `to`, `repository` filters) |
+| `PATCH` | `/api/notes/{id}` | Edit a note |
+| `DELETE` | `/api/notes/{id}` | Delete a note |
+| `GET` | `/api/export?format=` | Export as `md`, `json` or `csv` |
+| `POST` | `/api/webhooks/github-app` | GitHub App webhook (signed) |
+| `POST` | `/api/webhooks/github/{hookId}` | Manual GitHub webhook (signed) |
+| `POST` | `/api/webhooks/{gitlab\|bitbucket}/{hookId}` | GitLab / Bitbucket webhook |
+| `POST` | `/api/mcp` | MCP endpoint (Streamable HTTP) |
+
+Example:
 
 ```bash
-cp .env.example .env   # fill in secrets; set BETTER_AUTH_URL to your public https URL
+curl -H "Authorization: Bearer dm_..." https://your-domain/api/journal/2026-11-02
+```
+
+## Self-hosting
+
+The repository ships a multi-stage `Dockerfile` (standalone Next.js output, non-root user) and a `docker-compose.yml` with PostgreSQL.
+
+```bash
+cp .env.example .env
+# Fill in the secrets and set BETTER_AUTH_URL to your public https:// URL.
+# DATABASE_URL is set by docker-compose for the app container.
+
 docker compose --profile app up -d --build
 ```
 
-This starts Postgres, applies migrations, and runs the app on port 3000.
+This starts PostgreSQL, applies all migrations, and runs DevMemo on port **3000**. Put a reverse proxy with HTTPS in front of it (Caddy, Nginx, Traefik), then set your domain in the GitHub OAuth App (and GitHub App, if you use one).
 
-### Useful scripts
+**Updating:**
+
+```bash
+git pull
+docker compose --profile app up -d --build
+```
+
+Migrations run automatically before the app starts. Database data lives in the `devmemo-pg` volume; back it up with `pg_dump`.
+
+## Deploying to Vercel
+
+1. Create a PostgreSQL database (Neon, Supabase, Vercel Postgres or your own).
+2. Import the repository in Vercel. Leave **Root Directory** empty; the framework is detected as Next.js.
+3. Add the environment variables from [Configuration](#configuration). `BETTER_AUTH_URL` must be your production URL.
+4. Apply migrations against the production database once (and after every schema change):
+
+   ```bash
+   DATABASE_URL="postgresql://..." npx prisma migrate deploy
+   ```
+
+5. Deploy. Vercel builds from your production branch (usually `main`).
+6. Add your custom domain and update the callback URLs in your GitHub OAuth App and GitHub App.
+
+Environment variable changes only apply to new deployments, so **redeploy** after changing them.
+
+## Project structure
+
+```text
+src/
+  app/
+    (auth)/            login, OAuth consent
+    (dashboard)/       calendar, journal/[date], reports, repos, search, settings
+    api/               REST API, webhooks, MCP endpoint, auth handler
+    .well-known/       OAuth discovery for MCP clients
+    page.tsx           landing page
+  components/          UI by feature (ui, layout, calendar, journal, reports, settings, …)
+  server/              business logic (services), never imported by client code
+    github/            push parsing, GitHub App (JWT, installations, backfill)
+    git/               GitLab / Bitbucket adapters and webhooks
+    mcp/               MCP server: tools, prompts, resources
+  lib/                 pure, shared helpers (dates, validation, search text)
+  styles/globals.css   design tokens (light and dark)
+  proxy.ts             redirects signed-out users away from the dashboard
+prisma/
+  schema.prisma        data model
+  migrations/          versioned SQL migrations
+```
+
+**Conventions:** pages and route handlers stay thin (validate input, resolve the user, call a service). Every service function takes a `userId`, so no query can run without being scoped to a user.
+
+## Data model
+
+```text
+user ─┬─< session, account                    (Better Auth)
+      ├─< day ─┬─< note                       (unique: userId + date)
+      │        └─< commit                     (unique: userId + sha)
+      ├── github_hook                         (1:1, manual webhook)
+      ├─< provider_hook                       (one per GitLab / Bitbucket)
+      ├─< github_installation ─< github_repository
+      ├─< api_token                           (SHA-256 hash only)
+      └─< oauth_client / oauth_*_token / oauth_consent   (MCP OAuth)
+```
+
+- A **day** is a real row, so summaries and workday flags have a home and the month view is a single query.
+- Dates are stored as `date` and computed in the user's time zone: a commit at 23:30 in Tehran belongs to that day, not the previous one in UTC.
+- `(userId, sha)` is unique: redelivered webhooks are idempotent, and two people on one repository each keep their own copy.
+- Deleting a user cascades to all of their data.
+
+## Security
+
+- **Isolation:** every query is scoped by `userId`.
+- **Webhooks:** HMAC-SHA256 signatures (GitHub, Bitbucket) and token header (GitLab), compared in constant time.
+- **GitHub App installations** are linked only after verifying, through GitHub's user authorization, that the signed-in user can access the installation.
+- **Secrets at rest:** webhook secrets are encrypted with AES-256-GCM; API tokens are stored as SHA-256 hashes and shown only once.
+- **OAuth:** PKCE, consent screen, audience-bound JWT access tokens, revocable per app.
+- **Sessions:** httpOnly cookies, `Secure` on HTTPS, 30-day lifetime refreshed daily.
+- **Configuration:** environment variables are validated at startup; error messages name variables but never print their values.
+
+Found a vulnerability? Please email the maintainer or open a private security advisory on GitHub instead of a public issue.
+
+## Development
 
 | Script | Description |
 |---|---|
@@ -138,1341 +475,65 @@ This starts Postgres, applies migrations, and runs the app on port 3000.
 | `npm run build` / `npm start` | Production build and server |
 | `npm run typecheck` | Generate route types and run `tsc` |
 | `npm run lint` | ESLint |
-| `npm test` | Unit tests (Vitest) |
-| `npm run db:migrate` | Create/apply a migration in development |
-| `npm run db:deploy` | Apply migrations in production |
-| `npm run db:studio` | Browse the database |
+| `npm test` / `npm run test:watch` | Unit tests (Vitest) |
+| `npm run db:migrate` | Create and apply a migration (development) |
+| `npm run db:deploy` | Apply migrations (production) |
+| `npm run db:studio` | Browse the database in Prisma Studio |
 
----
+Before opening a pull request:
 
-# 1. Project Overview
+```bash
+npm run typecheck && npm run lint && npm test && npm run build
+```
 
-## 1.1 What is DevMemo?
+> This project uses **npm** only (`preinstall` runs `only-allow npm`). Please don't commit `pnpm-lock.yaml` or `yarn.lock`.
 
-DevMemo is a lightweight, open-source Personal Developer Journal designed to help developers record, organize, and retrieve their daily development activities.
+## Troubleshooting
 
-Developers work on multiple projects, investigate technical problems, make architectural decisions, fix bugs, implement features, and perform many other tasks throughout the day.
-
-Although Git records code changes, it does not capture the complete context of a developer's work.
-
-For example:
-
-- Why was a particular implementation chosen?
-- What problem was investigated today?
-- Which technical decision was made?
-- What was the developer working on yesterday?
-- When was a specific feature implemented?
-- What problems remain unresolved?
-- What happened during the development of a particular project?
-
-DevMemo aims to preserve this missing context.
-
-It combines three sources of developer history:
-
-1. **Developer Journal:** Manually written notes and daily activities.
-2. **Git Activity:** Automatically collected commits and repository events.
-3. **AI Assistant:** An intelligent interface for searching, understanding, and managing historical development information.
-
-The goal is to create a personal memory system for software developers without introducing the complexity of traditional project-management platforms.
-
-## 1.2 Core Philosophy
-
-DevMemo is built around three principles:
-
-- Git records what changed in the code.
-- The Journal records what happened during development.
-- AI helps developers understand and retrieve their history.
-
-DevMemo is not intended to replace GitHub, Jira, Linear, Notion, or other development tools.
-
-It provides a simple layer of personal memory that connects daily work with Git activity and AI assistants.
-
-## 1.3 Main Objectives
-
-- Maintain a structured daily development journal.
-- Track workdays using a calendar.
-- Automatically collect Git commit activity.
-- Connect journal information to AI assistants through MCP.
-- Search and summarize historical development activities.
-- Allow AI assistants to add notes and update journal entries.
-- Keep the application lightweight and easy to self-host.
-- Avoid unnecessary infrastructure and operational complexity.
-
----
-
-# 2. Product Scope
-
-DevMemo is a personal developer journal, not a project-management SaaS.
-
-The MVP should focus on a small set of features that work reliably.
-
-## 2.1 Main Features
-
-| Feature | Description | Priority |
-|---|---|---|
-| Calendar | Monthly calendar for viewing development activity | High |
-| Workday Tracking | Manually mark a date as a workday | High |
-| Daily Journal | Write and edit daily development notes | High |
-| GitHub Integration | Automatically receive GitHub commit activity | High |
-| Commit History | Display commits associated with each day | High |
-| MCP Integration | Connect AI assistants to the journal | High |
-| Journal Search | Search historical notes and activities | Medium |
-| AI Summary | Generate summaries from notes and commits | Medium |
-| Weekly Reports | Summarize weekly development activity | Future |
-| Project Timeline | View development history by repository | Future |
-| Telegram Integration | Add quick notes through Telegram | Future |
-| Other Git Providers | Support GitLab and other providers | Future |
-
----
-
-# 3. Technology Stack
-
-DevMemo is a single Next.js application. The frontend, REST API, GitHub webhook endpoint and MCP endpoint all live in one deployable app. A separate backend service would add infrastructure without adding value for this scope.
-
-| Area | Choice |
+| Symptom | Fix |
 |---|---|
-| Framework | Next.js 16 (App Router, Cache Components) + React 19 + TypeScript |
-| Styling | Tailwind CSS 4 |
-| Database | PostgreSQL |
-| ORM | Prisma 7 with the `pg` driver adapter |
-| Authentication | Better Auth, GitHub OAuth only |
-| Validation | Zod (shared by REST, server actions and MCP tools) |
-| Git integration | GitHub webhooks (push events) |
-| AI integration | Model Context Protocol (Streamable HTTP) |
+| `redirect_uri is not associated with this application` | `BETTER_AUTH_URL` doesn't match the callback URL in your GitHub OAuth App. Set both to your public URL and redeploy. |
+| `Invalid environment configuration` at startup | The message lists the variables to fix. |
+| Settings: *GitHub App is disabled: … is not a PEM private key* | `GITHUB_APP_PRIVATE_KEY` doesn't contain a key, often the `SHA256:…` fingerprint was pasted. Paste the whole `.pem` file and redeploy. |
+| Settings: *GitHub App is partially configured* | Set all six `GITHUB_APP_*` variables, or none. |
+| Webhook status stays grey | GitHub can't reach your URL (local machine without a tunnel), or the secret doesn't match. Check *Recent Deliveries* on GitHub. |
+| Commits from GitLab/Bitbucket are missing | Add the email you commit with under *Settings → Your commit emails*, or turn off *Only import my commits*. |
+| Commits appear on the wrong day | Set your time zone in *Settings → Preferences*. |
+| Vercel build fails on install | Remove any `pnpm-lock.yaml`/`yarn.lock` and make sure Root Directory is empty. |
 
-## 3.1 Multi-User, GitHub Sign-In
+## Roadmap
 
-DevMemo is a hosted, multi-user application that can also be self-hosted.
+- [ ] Add notes from a Telegram bot (the `TELEGRAM` note source is already in the data model)
+- [ ] Background queue for importing very large repositories
+- [ ] Right-to-left UI and the Persian (Jalali) calendar
+- [ ] End-to-end tests for sign-in and OAuth flows
+- [ ] More Git providers (Gitea, Azure DevOps) through new adapters
 
-- Users sign in with GitHub. There are no passwords, registration forms, email verification or reset flows.
-- Every journal record (`Day`, `Note`, `Commit`) belongs to a user, and every query is scoped by `userId`.
-- Each user has their own timezone (Settings), falling back to `APP_TIMEZONE`.
-- In later phases, each user gets their own webhook secret and personal MCP token.
+Have an idea? [Open an issue](https://github.com/thundersorena/DevMemo/issues) and let's talk about it.
 
-## 3.2 Database
+## Contributing
 
-PostgreSQL is the database. Journal dates are stored as Postgres `DATE` values, so a day is a calendar date with no time or timezone attached. Commit timestamps are converted to the user's timezone once, at ingestion time, to decide which day they belong to.
+Contributions of every size are welcome: bug reports, docs, translations, new Git providers, new MCP tools, design improvements.
 
-## 3.3 AI Integration
+1. **Fork** the repository and create a branch: `git checkout -b feat/my-idea`
+2. Make your change, and add tests for logic in `src/lib` or `src/server`.
+3. Run `npm run typecheck && npm run lint && npm test`.
+4. Commit with a clear message (e.g. `feat(search): filter by branch`) and open a **pull request** describing what and why.
 
-- Model Context Protocol (MCP)
-- Claude Desktop, Claude Code and other MCP-compatible clients
+For larger changes, please open an issue first so we can agree on the approach.
 
-AI remains optional. The journal works fully without any AI provider configured.
+## ⭐ Support the project
 
----
+If DevMemo is useful to you, or you just like the idea, **please give it a star** ⭐. It helps other developers find the project and keeps it going.
 
-# 4. High-Level Architecture
+**Fork it**, run your own instance, build the feature you've been missing, and send it back. I'd be really happy to grow DevMemo together with you: every issue, idea and pull request makes it better for everyone.
 
-The architecture should remain modular but simple.
+<p align="center">
+  <a href="https://github.com/thundersorena/DevMemo">⭐ Star DevMemo on GitHub</a> ·
+  <a href="https://github.com/thundersorena/DevMemo/fork">🍴 Fork it</a> ·
+  <a href="https://github.com/thundersorena/DevMemo/issues">💬 Open an issue</a>
+</p>
 
-```text
-                   Developer
-                       |
-                       |
-             +---------+---------+
-             |                   |
-             v                   v
-         Next.js             GitHub
-         Frontend            Webhooks
-             |                   |
-             | REST API          | Push Event
-             |                   |
-             v                   v
-        +-----------------------------+
-        |   Next.js (API + services)  |
-        |                             |
-        |  +-----------------------+  |
-        |  | Journal Module        |  |
-        |  +-----------------------+  |
-        |                             |
-        |  +-----------------------+  |
-        |  | Git Module            |  |
-        |  +-----------------------+  |
-        |                             |
-        |  +-----------------------+  |
-        |  | MCP Module            |  |
-        |  +-----------------------+  |
-        |                             |
-        |  +-----------------------+  |
-        |  | AI Summary Service    |  |
-        |  +-----------------------+  |
-        +-----------------------------+
-                       |
-                       v
-                 Prisma ORM
-                       |
-                       v
-                  PostgreSQL
-```
+## License
 
-## 4.1 Architecture Principles
-
-- Keep everything in one Next.js application.
-- Use modules instead of introducing unnecessary architectural layers.
-- Avoid microservices.
-- Avoid distributed infrastructure.
-- Keep the database as the single source of truth.
-- MCP must use the same application services as REST APIs.
-- Git ingestion must not depend on AI.
-- AI must not be required for normal journal operations.
-
-There is no need to introduce DDD, CQRS, Redis, RabbitMQ, BullMQ, vector databases, or a complex RAG pipeline in the MVP.
-
----
-
-# 5. Core Domain Model
-
-The central entity in DevMemo is a **Day**.
-
-The calendar is only a visual representation of these daily records.
-
-A developer can have a journal entry even without making any Git commits.
-
-Likewise, a Git commit can exist even if the developer has not manually marked that date as a workday.
-
-These are two separate concepts.
-
-## 5.1 Day
-
-Each calendar date can have one journal record.
-
-Suggested fields:
-
-| Field | Type | Description |
-|---|---|---|
-| id | String | Unique identifier |
-| date | Date/String | Unique calendar date |
-| isWorkDay | Boolean | Whether the developer marked this date as a workday |
-| notes | Text | Manually written daily notes |
-| summary | Text | Optional AI-generated summary |
-| createdAt | DateTime | Creation timestamp |
-| updatedAt | DateTime | Last update timestamp |
-
-A Day has a one-to-many relationship with Commit.
-
-## 5.2 Commit
-
-Each Git commit should be stored separately.
-
-Suggested fields:
-
-| Field | Type | Description |
-|---|---|---|
-| id | String | Unique identifier |
-| sha | String | Git commit SHA, unique |
-| repositoryId | String | GitHub repository identifier |
-| repositoryName | String | Repository full name |
-| message | Text | Commit message |
-| branch | String | Branch name |
-| url | String | GitHub commit URL |
-| committedAt | DateTime | Original commit timestamp |
-| dayId | String | Related journal day |
-| createdAt | DateTime | Database insertion timestamp |
-
-The SHA must be unique to prevent duplicate commits when GitHub retries webhook deliveries.
-
-## 5.3 Relationship
-
-```text
-Day
- |
- | 1
- |
- |----------------------|
- |                      |
- |                      |
-Commit 1             Commit 2
-```
-
-A single day can contain multiple commits from multiple repositories.
-
-Manual notes and imported commits must remain separate.
-
-Git synchronization must never overwrite manual notes.
-
----
-
-# 6. Calendar System
-
-The calendar is the main entry point into DevMemo.
-
-## 6.1 Monthly Calendar
-
-The calendar should support:
-
-- Viewing the current month.
-- Navigating between months.
-- Selecting a specific date.
-- Identifying workdays.
-- Identifying days with Git activity.
-- Opening the journal for a selected date.
-
-## 6.2 Calendar Indicators
-
-Two different indicators should be used.
-
-**Workday indicator**
-
-Shows that the developer manually marked the date as a workday.
-
-**Git activity indicator**
-
-Shows that one or more commits were associated with the date.
-
-These indicators must remain independent.
-
-Example:
-
-| Date | Workday | Git Activity |
-|---|---|---|
-| Monday | Yes | Yes |
-| Tuesday | Yes | No |
-| Wednesday | No | Yes |
-| Thursday | No | No |
-
-This distinction is important because a developer may work without committing code or push previously created commits on a different day.
-
-## 6.3 Workday Management
-
-The developer should be able to:
-
-- Open a calendar date.
-- Mark it as a workday.
-- Unmark it.
-- Add daily notes.
-- View imported Git activity.
-
-The calendar should not require the user to create a complex task or project structure.
-
----
-
-# 7. Daily Journal
-
-The Daily Journal is the most important part of DevMemo.
-
-Each date should have a simple journal page.
-
-## 7.1 Journal Interface
-
-A daily journal page should contain:
-
-1. Date.
-2. Workday status.
-3. Manual notes editor.
-4. Git activity list.
-5. Optional AI-generated summary.
-
-Example:
-
-```text
-------------------------------------
-Monday, November 2, 2026
-
-[✓] Workday
-
-------------------------------------
-Daily Notes
-
-Worked on the SMC backend.
-Investigated webhook authentication.
-Improved the QA request handling.
-
-------------------------------------
-Git Activity
-
-Repository: SMC
-
-- Fix webhook authentication
-- Improve QA request handling
-- Update backend configuration
-
-------------------------------------
-AI Summary
-
-Worked on backend improvements,
-including webhook authentication
-and QA request handling.
-------------------------------------
-```
-
-## 7.2 Manual Notes
-
-The developer should be able to write anything relevant to the workday:
-
-- Development activities.
-- Technical investigations.
-- Architectural decisions.
-- Problems and blockers.
-- Ideas.
-- Completed work.
-- Unfinished tasks.
-- Important observations.
-
-Notes should be editable at any time.
-
-## 7.3 Git Activity
-
-Imported commits should appear in a separate section.
-
-The application must not mix manually written notes with automatically imported Git information.
-
-This separation preserves the original source of each piece of information.
-
----
-
-# 8. GitHub Integration
-
-GitHub integration should automatically collect development activity.
-
-The first implementation should use GitHub Webhooks rather than polling repositories continuously.
-
-## 8.1 Webhook Workflow
-
-```text
-Developer
-    |
-    | git push
-    v
-GitHub Repository
-    |
-    | Push Event
-    v
-GitHub Webhook
-    |
-    v
-Next.js Git Controller
-    |
-    v
-Verify Webhook Signature
-    |
-    v
-Parse Commit Information
-    |
-    v
-Determine Commit Date
-    |
-    v
-Find or Create Journal Day
-    |
-    v
-Save Commit Records
-    |
-    v
-PostgreSQL Database
-```
-
-## 8.1.1 Implementation
-
-- Each user has one webhook endpoint: `POST /api/webhooks/github/:hookId`, with its own secret (AES-256-GCM encrypted at rest).
-- The same URL and secret can be added to any number of repositories or organizations.
-- **Only my commits** (default on) skips commits by other authors in shared repositories, matched by GitHub username, account email and GitHub noreply addresses.
-- `ping` is acknowledged, `push` is ingested, other events are ignored (202). Branch deletions and tag pushes are ignored.
-- The last delivery's status is shown in Settings, which helps debug signature or content-type problems.
-
-## 8.2 Webhook Event
-
-Initially, subscribe only to:
-
-```text
-push
-```
-
-A push event may contain multiple commits.
-
-The backend should process all relevant commits.
-
-## 8.3 Commit Information
-
-Extract:
-
-- Commit SHA.
-- Commit message.
-- Commit timestamp.
-- Repository ID.
-- Repository name.
-- Branch or ref.
-- Commit URL.
-- Author information if useful.
-
-The MVP should not store full Git diffs.
-
-Storing commit metadata is sufficient for the initial journal functionality.
-
-## 8.4 Webhook Security
-
-GitHub webhook requests must be verified using:
-
-```text
-X-Hub-Signature-256
-```
-
-The backend should:
-
-- Use the configured webhook secret.
-- Validate the HMAC signature.
-- Use the raw request body for signature verification.
-- Reject invalid signatures.
-- Validate the payload structure.
-- Avoid logging secrets.
-- Avoid storing unnecessary sensitive payload information.
-
-## 8.5 Idempotency
-
-GitHub may retry webhook deliveries.
-
-The backend must prevent duplicate commits.
-
-Use the commit SHA as a unique identifier.
-
-If a commit already exists, do not insert another record.
-
-This makes webhook processing idempotent.
-
-## 8.6 Date Handling
-
-The journal date should be determined using the original commit timestamp, not the webhook delivery time.
-
-The application should support a configurable timezone.
-
-Example:
-
-```env
-APP_TIMEZONE="Europe/Berlin"
-```
-
-The timezone must not be hardcoded.
-
-The backend should convert commit timestamps to the configured timezone before assigning a journal date.
-
-This is important for commits close to midnight.
-
-## 8.7 Important Architectural Rule
-
-Claude or another AI assistant must not participate in the Git ingestion process.
-
-GitHub Webhook → Next.js → Database
-
-This process must work independently.
-
-AI and MCP are separate interfaces that read and update the journal later.
-
----
-
-# 9. MCP Integration
-
-MCP is one of the most important features of DevMemo.
-
-It allows an AI assistant to interact directly with the developer's historical journal.
-
-Instead of manually opening calendar dates and searching notes, the developer can ask natural-language questions.
-
-## 9.1 MCP Architecture
-
-```text
-Developer
-    |
-    v
-Claude Desktop / Claude Code
-    |
-    v
-MCP Client
-    |
-    v
-DevMemo MCP Server
-    |
-    v
-Next.js Application Services
-    |
-    v
-Prisma
-    |
-    v
-PostgreSQL
-```
-
-MCP is an adapter to the existing backend.
-
-It must not introduce a separate database or duplicate journal business logic.
-
-The MCP server should call the same services used by REST endpoints.
-
-## 9.2 Initial MCP Tools
-
-The first version should provide the following tools.
-
-### get_day
-
-Retrieve a complete journal entry for a specific date.
-
-Input:
-
-```json
-{
-  "date": "2026-11-02"
-}
-```
-
-Output should include:
-
-- Workday status.
-- Manual notes.
-- Git commits.
-- AI summary, if available.
-
-### get_month
-
-Retrieve journal activity for a specific month.
-
-Input:
-
-```json
-{
-  "year": 2026,
-  "month": 11
-}
-```
-
-Useful for understanding monthly development activity.
-
-### add_note
-
-Add a note to a specific journal date.
-
-Input:
-
-```json
-{
-  "date": "2026-11-02",
-  "note": "Investigated webhook authentication."
-}
-```
-
-The tool should append the note without accidentally deleting existing notes.
-
-### update_day
-
-Update a journal date or its workday status.
-
-Input:
-
-```json
-{
-  "date": "2026-11-02",
-  "isWorkDay": true
-}
-```
-
-### get_commits
-
-Retrieve commits for a particular date.
-
-Input:
-
-```json
-{
-  "date": "2026-11-02",
-  "repository": "SMC"
-}
-```
-
-The repository parameter should be optional.
-
-### search_journal
-
-Search historical journal information.
-
-Input:
-
-```json
-{
-  "query": "Telegram webhook authentication"
-}
-```
-
-The initial implementation can use database text search.
-
-A vector database or RAG system is not necessary for the MVP.
-
-## 9.3 Example AI Interactions
-
-The developer should be able to ask:
-
-- What did I work on today?
-- What did I work on yesterday?
-- Summarize my development activities this week.
-- What did I change in the SMC project?
-- When did I last investigate Telegram webhook authentication?
-- Which repositories did I work on last month?
-- Show my recent Git activity.
-- Add a note to yesterday's journal.
-- Mark today as a workday.
-- What technical problems did I investigate this week?
-
-The AI assistant should retrieve information from DevMemo rather than inventing historical activity.
-
-## 9.3.1 Implemented Tools
-
-| Tool | Purpose |
-|---|---|
-| `get_today` | Today's date, yesterday and current week in the user's timezone |
-| `get_day` | One full day: workday, notes (with source), commits, summary |
-| `get_range` | Full days in a date range (max 62 days), for weekly summaries |
-| `get_month` | Per-day counts for a month |
-| `get_commits` | Commits for a date, optional repository filter |
-| `search_journal` | Text search across notes, commits, repositories, summaries |
-| `add_note` | Append a note (stored with source `MCP`, shown as "via AI") |
-| `update_day` | Set workday flag and/or save a summary |
-
-The server also sends instructions telling the assistant to answer only from tool data and never invent activity.
-
-**Prompts** (shown as slash commands or templates in most clients):
-
-| Prompt | Arguments | What it does |
-|---|---|---|
-| `weekly_report` | `week`: `this` (default), `last` or a date | Weekly report: highlights, by project, decisions, open items |
-| `daily_standup` | `date` (default today) | Yesterday / Today / Blockers, using the last working day |
-| `summarize_day` | `date` (default today) | Summarizes a day and saves it with `update_day` |
-
-**Resources**: `devmemo://day/{date}` (one day as Markdown; the last 30 active days are listed) and `devmemo://week/current`.
-
-## 9.4 MCP Transport
-
-For the MVP, MCP can live inside the Next.js backend.
-
-There is no need for a separate MCP microservice.
-
-Possible transports:
-
-- Streamable HTTP for remote MCP connections.
-- STDIO for locally launched MCP processes.
-
-The actual transport should be selected based on the compatibility requirements of the intended AI clients.
-
-Claude Desktop and Claude Code integration should be tested before finalizing the transport.
-
-**Implemented:** Streamable HTTP at `POST /api/mcp`, stateless (a fresh server per request, bound to the token's user), JSON responses.
-
-## 9.5 MCP Security
-
-**Implemented:** personal access tokens (`dm_…`), created and revoked in Settings. Only a SHA-256 hash is stored, and the token is shown once. The same tokens authenticate the REST API via `Authorization: Bearer`.
-
-
-Read and write tools must validate their input.
-
-If MCP is exposed remotely:
-
-- Protect write operations with authentication.
-- Do not expose unauthenticated journal modification.
-- Keep credentials outside source control.
-- Validate dates and text length.
-- Avoid exposing sensitive journal data to unauthorized clients.
-
----
-
-# 10. AI Summary
-
-DevMemo can optionally generate summaries from daily journal information.
-
-This feature should remain lightweight and optional.
-
-## 10.1 Summary Workflow
-
-```text
-Developer requests summary
-          |
-          v
-Next.js Journal Service
-          |
-          v
-Load Daily Notes
-          |
-          v
-Load Git Commits
-          |
-          v
-Send relevant context to AI
-          |
-          v
-Receive summary
-          |
-          v
-Save summary in Day
-```
-
-## 10.2 Summary Requirements
-
-The AI should:
-
-- Summarize the developer's actual activities.
-- Combine manual notes and commit messages.
-- Identify important development topics.
-- Highlight reported blockers when present.
-- Avoid inventing completed tasks.
-- Avoid inventing technical decisions.
-- Avoid claiming that work was completed when the source only describes an investigation.
-
-## 10.3 Cost Optimization
-
-AI summaries should be generated on demand or explicitly at the end of the day.
-
-Do not call an AI provider every time a commit arrives.
-
-The application should work normally without AI configuration.
-
-A possible endpoint:
-
-```http
-POST /journal/:date/summary
-```
-
-The resulting summary should be saved in the Day record.
-
----
-
-# 11. REST API Design
-
-The backend should expose a small REST API.
-
-## 11.1 Journal APIs
-
-### Retrieve a Daily Journal
-
-```http
-GET /api/journal/:date
-```
-
-Returns:
-
-- Date.
-- Workday status.
-- Notes.
-- Summary.
-- Commits.
-
-### Update a Daily Journal
-
-```http
-PATCH /api/journal/:date
-```
-
-Example:
-
-```json
-{
-  "isWorkDay": true
-}
-```
-
-### Retrieve Daily Commits
-
-```http
-GET /api/journal/:date/commits
-```
-
-### Retrieve Monthly Journal Data
-
-```http
-GET /api/journal/month/:year/:month
-```
-
-Returns calendar information for the selected month.
-
-### Add a Note
-
-```http
-POST /api/journal/:date/notes
-```
-
-```json
-{ "content": "Investigated webhook authentication." }
-```
-
-Notes are appended; existing notes are never modified.
-
-### Edit or Delete a Note
-
-```http
-PATCH  /api/notes/:id
-DELETE /api/notes/:id
-```
-
-### Search
-
-```http
-GET /api/journal/search?q=webhook&type=note,commit&from=2026-11-01&to=2026-11-30&repository=acme/api
-```
-
-### Export
-
-```http
-GET /api/export?format=md|json|csv&from=YYYY-MM-DD&to=YYYY-MM-DD
-```
-
-### Generate Summary
-
-```http
-POST /api/journal/:date/summary
-```
-
-## 11.2 GitHub Webhook API
-
-```http
-POST /api/webhooks/github/:hookId
-```
-
-Receives GitHub push events.
-
-## 11.3 Authentication and Response Format
-
-All API routes require a signed-in session (cookie). MCP and webhook endpoints will use their own per-user credentials.
-
-Success responses are `{ "data": ... }`. Errors are `{ "error": { "code", "message", "details?" } }` with matching HTTP status codes (`400`, `401`, `404`, `500`).
-
-## 11.4 API Design Principles
-
-- Keep endpoints simple.
-- Validate all inputs.
-- Use consistent response structures.
-- Avoid unnecessary endpoints.
-- Keep journal operations independent from AI services.
-- Ensure Git webhook processing is idempotent.
-
----
-
-# 12. Project Structure
-
-```text
-DevMemo/
-├── prisma/
-│   └── schema.prisma          # User/Session/Account (auth) + Day/Note/Commit
-├── prisma.config.ts
-├── src/
-│   ├── app/
-│   │   ├── (auth)/login/       # GitHub sign-in page
-│   │   ├── (dashboard)/        # Signed-in area
-│   │   │   ├── calendar/
-│   │   │   ├── journal/[date]/
-│   │   │   ├── journal/today/  # Redirects to today in the user's timezone
-│   │   │   ├── search/
-│   │   │   ├── settings/
-│   │   │   └── actions.ts      # Server actions used by the UI
-│   │   └── api/
-│   │       ├── auth/[...all]/  # Better Auth
-│   │       ├── journal/        # REST API
-│   │       ├── notes/[id]/
-│   │       ├── mcp/            # MCP endpoint (Streamable HTTP)
-│   │       └── webhooks/github/[hookId]/
-│   ├── components/             # calendar, journal, layout, ui
-│   ├── lib/                    # dates, validation (client-safe)
-│   ├── server/                 # server-only: db, auth, session, services
-│   │   ├── journal.service.ts  # Single source of journal business logic
-│   │   ├── api-token.service.ts
-│   │   ├── github/             # push parsing (pure, tested) + webhook service
-│   │   ├── mcp/server.ts       # MCP tools → journal service
-│   │   └── ...
-│   └── proxy.ts                # Optimistic auth redirect
-├── docker-compose.yml
-├── Dockerfile
-└── .env.example
-```
-
-## 12.1 Layering Rule
-
-`src/server/journal.service.ts` is the only code that reads or writes journal data. REST route handlers, server actions, the GitHub ingester (phase 2) and MCP tools (phase 3) are thin adapters over it. Each adapter authenticates, validates input with the shared Zod schemas, and calls the service.
-
-## 12.2 Data Model
-
-- **Day**: one row per user per date (`@@unique([userId, date])`), created lazily. Holds `isWorkDay` and the optional `summary`.
-- **Note**: separate rows, never one big text field. UI edits and AI/MCP appends can't overwrite each other, and each note records its `source` (`MANUAL`, `MCP`, `TELEGRAM`).
-- **Commit**: Git metadata, unique per `(userId, sha)`, so retried webhook deliveries are idempotent.
-
----
-
-# 13. Frontend
-
-The UI is intentionally minimal:
-
-- Monthly calendar with independent workday, Git activity and notes indicators.
-- Daily journal page: workday toggle, notes timeline (add, edit, delete), Git activity grouped by repository, optional AI summary.
-- Search across notes, commit messages, repositories and summaries.
-- Settings: timezone and integration status.
-
-Pages that read the session or the database render inside `<Suspense>` boundaries, as required by Cache Components.
-
----
-
-# 14. Configuration
-
-See `.env.example`:
-
-```env
-DATABASE_URL="postgresql://devmemo:devmemo@localhost:5432/devmemo?schema=public"
-BETTER_AUTH_SECRET=""
-BETTER_AUTH_URL="http://localhost:3000"
-GITHUB_CLIENT_ID=""
-GITHUB_CLIENT_SECRET=""
-APP_TIMEZONE="UTC"
-```
-
-Environment variables are validated at startup, and misconfiguration fails with a readable error.
-
-Secrets must never be committed. `.env.example` contains placeholders only.
-
----
-
-# 15. Reliability and Security
-
-The following requirements are important even for a small application.
-
-## 15.1 Data Integrity
-
-- Every calendar date should have at most one Day record.
-- Every Git commit should be stored only once.
-- Commit SHA should be unique.
-- Git synchronization must not overwrite manual notes.
-- AI summaries should be stored separately from original notes.
-
-## 15.2 Webhook Reliability
-
-- Verify every webhook signature.
-- Handle duplicate deliveries.
-- Validate incoming payloads.
-- Handle empty commit lists.
-- Handle deleted branches and unusual push events.
-- Use original commit timestamps.
-- Avoid relying on webhook delivery time.
-
-## 15.3 AI Reliability
-
-- Journal functionality must not depend on AI.
-- MCP errors must not affect stored journal data.
-- AI failures must not delete or modify original notes.
-- Summaries must be based on actual stored information.
-
-## 15.4 Deployment
-
-GitHub webhooks require a publicly reachable HTTPS endpoint.
-
-For local development, use a secure temporary tunnel or a development deployment.
-
-The application should also consider persistent database storage before production deployment.
-
----
-
-# 16. Development Roadmap
-
-The project should be implemented incrementally.
-
-## Phase 1: Core Journal
-
-Goal: Build a functional developer journal without GitHub or AI. **Status: done.**
-
-Tasks:
-
-1. ✅ Set up the Next.js application.
-2. ✅ Configure Prisma with PostgreSQL.
-3. ✅ Create User, Day, Note and Commit models.
-4. ✅ Sign in with GitHub (Better Auth).
-5. ✅ Implement the journal service and REST API.
-6. ✅ Implement the monthly calendar.
-7. ✅ Implement the daily journal (notes, workday toggle).
-8. ✅ Implement search and timezone settings.
-
-**Expected result:** A usable personal developer journal.
-
-## Phase 2: GitHub Integration
-
-Goal: Automatically import development activity.
-
-Tasks:
-
-1. Create GitHub webhook endpoint.
-2. Configure webhook signature verification.
-3. Parse push events.
-4. Extract commit metadata.
-5. Convert commit timestamps to the configured timezone.
-6. Find or create the corresponding Day.
-7. Save commits.
-8. Implement duplicate detection.
-9. Display Git activity in the frontend.
-
-**Expected result:** Daily journals automatically include GitHub activity.
-
-## Phase 3: MCP Integration
-
-Goal: Allow AI assistants to access and modify the journal.
-
-Tasks:
-
-1. Implement MCP server.
-2. Register initial MCP tools.
-3. Connect tools to JournalService.
-4. Implement read operations.
-5. Implement write operations.
-6. Validate MCP inputs.
-7. Connect Claude Desktop or Claude Code.
-8. Test natural-language interactions.
-
-**Expected result:** AI assistants can interact with developer history.
-
-## Phase 4: AI Summaries
-
-Goal: Generate useful summaries from journal information.
-
-Tasks:
-
-1. Add optional AI provider configuration.
-2. Implement summary generation service.
-3. Retrieve daily notes and commits.
-4. Generate summaries on demand.
-5. Save summaries.
-6. Display summaries in the frontend.
-
-**Expected result:** Developers can generate summaries of their daily work.
-
----
-
-# 17. Testing Strategy
-
-Testing should focus on important data and integration boundaries.
-
-## 17.1 Journal Tests
-
-- Create a journal day.
-- Retrieve an existing day.
-- Update workday status.
-- Update notes.
-- Preserve notes when Git commits arrive.
-- Retrieve monthly calendar information.
-
-## 17.2 GitHub Tests
-
-- Valid webhook signature.
-- Invalid webhook signature.
-- Single commit.
-- Multiple commits.
-- Duplicate commit SHA.
-- Empty commit list.
-- Multiple repositories.
-- Timezone boundary.
-- Commit close to midnight.
-- Retry webhook delivery.
-
-## 17.3 MCP Tests
-
-- Retrieve a journal day.
-- Retrieve monthly activity.
-- Add a note.
-- Update workday status.
-- Retrieve commits.
-- Search journal entries.
-- Reject invalid inputs.
-- Protect write operations.
-
-## 17.4 AI Tests
-
-- Generate a daily summary.
-- Handle missing AI configuration.
-- Handle provider errors.
-- Ensure summaries do not overwrite original notes.
-- Ensure summaries do not invent activities.
-
----
-
-# 18. Future Features
-
-The following features may be considered after the MVP is stable.
-
-They should not be included in the initial implementation unless there is a clear requirement.
-
-## 18.1 Weekly and Monthly Reports
-
-Generate reports based on:
-
-- Daily notes.
-- Git commits.
-- Repository activity.
-- Technical investigations.
-
-## 18.2 Project Timeline
-
-View development history for a specific repository.
-
-Example:
-
-```text
-SMC
- |
- +-- October 20
- |     Backend authentication investigation
- |
- +-- October 21
- |     Webhook implementation
- |
- +-- October 22
-       QA optimization
-```
-
-## 18.3 Advanced Journal Search
-
-Improve searching across:
-
-- Notes.
-- Commit messages.
-- Repository names.
-- Historical summaries.
-
-Start with database search.
-
-Only consider semantic search or embeddings if real usage demonstrates that ordinary search is insufficient.
-
-## 18.4 Telegram Quick Notes
-
-Allow the developer to send short notes through Telegram.
-
-Example:
-
-```text
-/devmemo I investigated the new MCP transport today.
-```
-
-This can be implemented later as another input channel.
-
-## 18.5 Additional Git Providers
-
-Potential future integrations:
-
-- GitLab.
-- Bitbucket.
-- Self-hosted Git services.
-
-## 18.6 Export
-
-Allow users to export their journal as:
-
-- Markdown.
-- JSON.
-- CSV.
-
-## 18.7 MCP Resources and Prompts
-
-Future MCP improvements may include:
-
-- Journal resources.
-- Monthly development summaries.
-- Predefined prompts.
-- Project-specific context.
-
----
-
-# 19. What DevMemo Should NOT Become
-
-To protect the original concept, avoid introducing unnecessary complexity.
-
-DevMemo should not become:
-
-- A Jira alternative.
-- A complete project-management system.
-- A task-management SaaS.
-- A team collaboration platform.
-- A complex analytics platform.
-- A multi-agent AI system.
-- A RAG infrastructure project.
-- A microservices architecture.
-
-The primary objective is to preserve and retrieve personal development history.
-
-A small application that works reliably is more valuable than a large application with unnecessary infrastructure.
-
----
-
-# 20. Open-Source Strategy
-
-DevMemo is intended to be an open-source project.
-
-## 20.1 Repository Description
-
-Suggested GitHub description:
-
-An open-source personal developer journal that tracks daily work, Git activity, and connects with AI assistants through MCP.
-
-## 20.2 License
-
-MIT License is the proposed licensing choice.
-
-The license should be explicitly added and confirmed before the first public release.
-
-## 20.3 Recommended Repository Files
-
-```text
-README.md
-LICENSE
-CONTRIBUTING.md
-CODE_OF_CONDUCT.md
-SECURITY.md
-.env.example
-.gitignore
-```
-
-## 20.4 Contribution Principles
-
-- Keep pull requests focused.
-- Avoid unnecessary dependencies.
-- Include tests for important changes.
-- Document new integrations.
-- Never commit personal journal databases.
-- Never commit API keys or webhook secrets.
-- Keep the project easy to run locally.
-
-The README should clearly distinguish implemented features from planned roadmap items.
-
----
-
-# 21. Final Product Definition
-
-DevMemo is a lightweight personal developer memory system.
-
-It connects three important elements:
-
-1. Daily developer notes.
-2. Automatically collected Git activity.
-3. AI assistants through MCP.
-
-The application should be simple enough to run locally, flexible enough to integrate with different AI clients, and structured enough to preserve development history over time.
-
-Its most important characteristic is that it does not require AI to function.
-
-Git activity is collected automatically.
-
-Daily notes are stored independently.
-
-AI assistants access the same historical information through MCP.
-
-The database remains the source of truth.
-
-**DevMemo helps developers remember not only what they changed, but also what they did, investigated, decided, and learned.**
-
----
-
-# 22. Implementation Priorities
-
-The following priorities should guide all implementation decisions.
-
-| Priority | Requirement |
-|---|---|
-| P0 | Reliable daily journal |
-| P0 | Workday calendar |
-| P0 | Next.js application |
-| P0 | Prisma + PostgreSQL |
-| P1 | GitHub webhook integration |
-| P1 | Commit synchronization |
-| P1 | MCP server |
-| P1 | Claude integration |
-| P2 | AI daily summaries |
-| P2 | Journal search improvements |
-| P3 | Weekly/monthly reports |
-| P3 | Additional Git providers |
-| P3 | Telegram quick notes |
-
-**Final development principle: Build the journal first, connect Git second, and add AI through MCP third.**
+[MIT](LICENSE) © 2026 Pouya
